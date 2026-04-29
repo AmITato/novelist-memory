@@ -43,7 +43,8 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
       parameters: { temperature: 0.2, max_tokens: 2000 },
     }
     if (internConnId) internGenRequest.connection_id = internConnId
-    const response = await (spindle.generate.quiet as Function)(internGenRequest, userId) as { content: string }
+    if (userId) internGenRequest.userId = userId
+    const response = await spindle.generate.quiet(internGenRequest) as { content: string }
     let selectionContent = response.content.trim()
     if (selectionContent.startsWith('```')) {
       selectionContent = selectionContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
@@ -100,7 +101,8 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
         parameters: { temperature: 0.2, max_tokens: 500 },
       }
       if (internConnId) annotGenRequest.connection_id = internConnId
-      const annotationResponse = await (spindle.generate.quiet as Function)(annotGenRequest, userId) as { content: string }
+      if (userId) annotGenRequest.userId = userId
+      const annotationResponse = await spindle.generate.quiet(annotGenRequest) as { content: string }
       annotation = annotationResponse.content
     } catch {
       annotation = selection.relevanceNote

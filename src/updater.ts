@@ -80,9 +80,10 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
       parameters: { temperature: 0.3, max_tokens: 4000 },
     }
     if (connectionId) genRequest.connection_id = connectionId
+    if (userId) genRequest.userId = userId
 
     spindle.log.info('[NovelistMemory] Sending whiteboard update quiet gen...')
-    const response = await (spindle.generate.quiet as Function)(genRequest, userId) as { content: string }
+    const response = await spindle.generate.quiet(genRequest) as { content: string }
     spindle.log.info(`[NovelistMemory] Quiet gen response received (${response.content?.length ?? 0} chars)`)
 
     // Strip markdown code fences if the model wraps its response
@@ -210,7 +211,8 @@ async function checkAndArchiveMessages(chatId: string, userId?: string): Promise
         parameters: { temperature: 0.1, max_tokens: 500 },
       }
       if (metaConnId) metaGenRequest.connection_id = metaConnId
-      const response = await (spindle.generate.quiet as Function)(metaGenRequest, userId) as { content: string }
+      if (userId) metaGenRequest.userId = userId
+      const response = await spindle.generate.quiet(metaGenRequest) as { content: string }
       let content = response.content.trim()
       if (content.startsWith('```')) {
         content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
