@@ -221,6 +221,85 @@ export function setup(ctx: SpindleFrontendContext) {
       color: var(--lumiverse-text-muted, #888);
       font-style: italic;
     }
+
+    .novelist-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--lumiverse-border);
+      gap: 12px;
+    }
+
+    .novelist-field:last-child { border-bottom: none; }
+
+    .novelist-field-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--lumiverse-text);
+      flex: 1;
+    }
+
+    .novelist-field-desc {
+      font-size: 11px;
+      color: var(--lumiverse-text-muted, #888);
+      margin-top: 2px;
+      font-weight: 400;
+    }
+
+    .novelist-input {
+      width: 80px;
+      padding: 6px 8px;
+      background: var(--lumiverse-bg);
+      border: 1px solid var(--lumiverse-border);
+      border-radius: var(--lumiverse-radius);
+      color: var(--lumiverse-text);
+      font-family: inherit;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .novelist-input:focus { outline: none; border-color: var(--lumiverse-accent); }
+
+    .novelist-input-wide { width: 100%; text-align: left; }
+
+    .novelist-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      background: var(--lumiverse-border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .novelist-switch.active { background: var(--lumiverse-accent); }
+
+    .novelist-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .novelist-switch.active::after { transform: translateX(18px); }
+
+    .novelist-save-banner {
+      padding: 10px 12px;
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      border-radius: var(--lumiverse-radius);
+      font-size: 12px;
+      color: #4caf50;
+      text-align: center;
+      margin-bottom: 12px;
+    }
   `)
 
   // ─── State ──────────────────────────────────────────────────────────────
@@ -231,6 +310,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let recallResults: RecallResult[] = []
   let archiveStats: ArchiveStats['stats'] | null = null
   let drawerContainer: HTMLElement | null = null
+  let currentConfig: Record<string, unknown> | null = null
 
   // ─── Detect Active Chat on Load ──────────────────────────────────────
 
@@ -578,20 +658,235 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   function renderSettingsTab(root: HTMLElement) {
-    const container = document.createElement('div')
-    container.innerHTML = `
-      <div class="novelist-section">
-        <div class="novelist-section-header">Configuration</div>
-        <div class="novelist-empty" style="padding: 12px;">
-          Settings will load from the backend. Use the command palette to adjust Novelist Memory settings.
-        </div>
-      </div>
-    `
+    if (!currentConfig) {
+      const loading = document.createElement('div')
+      loading.className = 'novelist-empty'
+      loading.textContent = 'Loading settings...'
+      root.appendChild(loading)
+      ctx.sendToBackend({ type: 'get_config' })
+      return
+    }
 
-    // Request config
-    ctx.sendToBackend({ type: 'get_config' })
+    const cfg = currentConfig as {
+      enabled: boolean
+      slidingWindowSize: number
+      autoCommitUpdates: boolean
+      updateReviewWindowMs: number
+      whiteboardTokenBudget: number
+      internConnectionId?: string
+      updaterConnectionId?: string
+      compactionThreshold: number
+      auditIntervalMessages: number
+    }
+
+    const container = document.createElement('div')
+
+    // Saved banner (hidden by default)
+    const savedBanner = document.createElement('div')
+    savedBanner.className = 'novelist-save-banner'
+    savedBanner.style.display = 'none'
+    savedBanner.textContent = '✓ Settings saved'
+    container.appendChild(savedBanner)
+
+    function showSaved() {
+      savedBanner.style.display = 'block'
+      setTimeout(() => { savedBanner.style.display = 'none' }, 2000)
+    }
+
+    function saveField(key: string, value: unknown) {
+      if (!currentConfig) return
+      currentConfig[key] = value
+      ctx.sendToBackend({ type: 'save_config', data: { config: { [key]: value } } })
+      showSaved()
+    }
+
+    // ─── General ──────────────────────────────────────────────────────
+
+    const generalSection = createSection('General', '')
+
+    // Enabled toggle
+    generalSection.appendChild(makeToggleField(
+      'Enabled',
+      'Master toggle for Novelist Memory',
+      cfg.enabled,
+      (val) => saveField('enabled', val)
+    ))
+
+    // Auto-commit toggle
+    generalSection.appendChild(makeToggleField(
+      'Auto-Commit Updates',
+      'Automatically commit whiteboard updates after the review window',
+      cfg.autoCommitUpdates,
+      (val) => saveField('autoCommitUpdates', val)
+    ))
+
+    container.appendChild(generalSection)
+
+    // ─── Context Window ───────────────────────────────────────────────
+
+    const windowSection = createSection('Context Window', '')
+
+    // Sliding window size
+    windowSection.appendChild(makeNumberField(
+      'Sliding Window',
+      'Recent exchanges kept in active context (each = 1 user + 1 assistant msg)',
+      cfg.slidingWindowSize,
+      1, 20,
+      (val) => saveField('slidingWindowSize', val)
+    ))
+
+    // Whiteboard token budget
+    windowSection.appendChild(makeNumberField(
+      'Token Budget',
+      'Warn when whiteboard exceeds this many tokens',
+      cfg.whiteboardTokenBudget,
+      2000, 50000,
+      (val) => saveField('whiteboardTokenBudget', val)
+    ))
+
+    // Review window
+    windowSection.appendChild(makeNumberField(
+      'Review Window (seconds)',
+      'Time before pending updates auto-commit',
+      Math.round(cfg.updateReviewWindowMs / 1000),
+      5, 300,
+      (val) => saveField('updateReviewWindowMs', val * 1000)
+    ))
+
+    container.appendChild(windowSection)
+
+    // ─── Maintenance ──────────────────────────────────────────────────
+
+    const maintenanceSection = createSection('Maintenance', '')
+
+    maintenanceSection.appendChild(makeNumberField(
+      'Compaction Threshold',
+      'Chronicle entries before compaction triggers',
+      cfg.compactionThreshold,
+      20, 500,
+      (val) => saveField('compactionThreshold', val)
+    ))
+
+    maintenanceSection.appendChild(makeNumberField(
+      'Audit Interval',
+      'Messages between full whiteboard consistency audits',
+      cfg.auditIntervalMessages,
+      10, 200,
+      (val) => saveField('auditIntervalMessages', val)
+    ))
+
+    container.appendChild(maintenanceSection)
+
+    // ─── Model Connections ────────────────────────────────────────────
+
+    const modelSection = createSection('Model Connections', 'optional')
+
+    modelSection.appendChild(makeTextField(
+      'Intern Connection ID',
+      'Specific connection for the retrieval model (blank = use active)',
+      cfg.internConnectionId ?? '',
+      (val) => saveField('internConnectionId', val || undefined)
+    ))
+
+    modelSection.appendChild(makeTextField(
+      'Updater Connection ID',
+      'Specific connection for the whiteboard updater model (blank = use active)',
+      cfg.updaterConnectionId ?? '',
+      (val) => saveField('updaterConnectionId', val || undefined)
+    ))
+
+    container.appendChild(modelSection)
+
+    // ─── Danger Zone ──────────────────────────────────────────────────
+
+    if (currentChatId) {
+      const dangerSection = createSection('Danger Zone', '')
+
+      const resetBtn = document.createElement('button')
+      resetBtn.className = 'novelist-btn novelist-btn-danger'
+      resetBtn.style.cssText = 'width: 100%;'
+      resetBtn.textContent = 'Reset Whiteboard for Current Chat'
+      resetBtn.onclick = () => {
+        if (confirm('This will erase the entire whiteboard for this chat. The archive is preserved. Continue?')) {
+          ctx.sendToBackend({ type: 'reset_whiteboard', data: { chatId: currentChatId } })
+        }
+      }
+      dangerSection.appendChild(resetBtn)
+
+      container.appendChild(dangerSection)
+    }
 
     root.appendChild(container)
+  }
+
+  // ─── Form Field Helpers ─────────────────────────────────────────────────
+
+  function makeToggleField(label: string, desc: string, value: boolean, onChange: (val: boolean) => void): HTMLElement {
+    const field = document.createElement('div')
+    field.className = 'novelist-field'
+
+    const labelDiv = document.createElement('div')
+    labelDiv.className = 'novelist-field-label'
+    labelDiv.innerHTML = `${escapeHtml(label)}<div class="novelist-field-desc">${escapeHtml(desc)}</div>`
+
+    const toggle = document.createElement('div')
+    toggle.className = `novelist-switch${value ? ' active' : ''}`
+    toggle.onclick = () => {
+      const newVal = !toggle.classList.contains('active')
+      toggle.classList.toggle('active', newVal)
+      onChange(newVal)
+    }
+
+    field.appendChild(labelDiv)
+    field.appendChild(toggle)
+    return field
+  }
+
+  function makeNumberField(label: string, desc: string, value: number, min: number, max: number, onChange: (val: number) => void): HTMLElement {
+    const field = document.createElement('div')
+    field.className = 'novelist-field'
+
+    const labelDiv = document.createElement('div')
+    labelDiv.className = 'novelist-field-label'
+    labelDiv.innerHTML = `${escapeHtml(label)}<div class="novelist-field-desc">${escapeHtml(desc)}</div>`
+
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.className = 'novelist-input'
+    input.value = String(value)
+    input.min = String(min)
+    input.max = String(max)
+    input.onchange = () => {
+      const num = parseInt(input.value, 10)
+      if (!isNaN(num) && num >= min && num <= max) onChange(num)
+      else input.value = String(value)
+    }
+
+    field.appendChild(labelDiv)
+    field.appendChild(input)
+    return field
+  }
+
+  function makeTextField(label: string, desc: string, value: string, onChange: (val: string) => void): HTMLElement {
+    const field = document.createElement('div')
+    field.className = 'novelist-field'
+    field.style.flexDirection = 'column'
+    field.style.alignItems = 'stretch'
+
+    const labelDiv = document.createElement('div')
+    labelDiv.className = 'novelist-field-label'
+    labelDiv.innerHTML = `${escapeHtml(label)}<div class="novelist-field-desc">${escapeHtml(desc)}</div>`
+
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'novelist-input novelist-input-wide'
+    input.value = value
+    input.placeholder = 'Leave blank for default'
+    input.onchange = () => onChange(input.value.trim())
+
+    field.appendChild(labelDiv)
+    field.appendChild(input)
+    return field
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
@@ -668,7 +963,15 @@ export function setup(ctx: SpindleFrontendContext) {
       }
 
       case 'config_data': {
-        // Could render config UI here
+        const data = payload.data as { config: Record<string, unknown> }
+        currentConfig = data.config
+        renderDrawer()
+        break
+      }
+
+      case 'config_saved': {
+        const data = payload.data as { config: Record<string, unknown> }
+        currentConfig = data.config
         break
       }
 
