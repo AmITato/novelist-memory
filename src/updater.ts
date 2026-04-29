@@ -10,34 +10,41 @@ declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
 export async function processGenerationEnd(
   chatId: string,
-  messageId?: string
+  messageId?: string,
+  userId?: string
 ): Promise<void> {
   const config = await getConfig()
   if (!config.enabled) return
 
   try {
+    spindle.log.info(`[NovelistMemory] Processing generation end for chat ${chatId}, message ${messageId ?? 'unknown'}`)
+
     // Run whiteboard update and archival check concurrently
     await Promise.all([
-      updateWhiteboard(chatId, messageId),
-      checkAndArchiveMessages(chatId),
+      updateWhiteboard(chatId, messageId, userId),
+      checkAndArchiveMessages(chatId, userId),
     ])
 
     // Auto-commit any pending updates whose review window has elapsed
     await autoCommitDueUpdates(chatId)
   } catch (err) {
-    spindle.log.error(`Post-generation processing failed: ${err}`)
+    spindle.log.error(`[NovelistMemory] Post-generation processing failed: ${err}`)
   }
 }
 
 // ─── Whiteboard Update ──────────────────────────────────────────────────────
 
-async function updateWhiteboard(chatId: string, messageId?: string): Promise<void> {
+async function updateWhiteboard(chatId: string, messageId?: string, userId?: string): Promise<void> {
   const config = await getConfig()
   const whiteboard = await getWhiteboard(chatId)
 
   // Fetch recent messages for context
   const allMessages = await spindle.chat.getMessages(chatId)
-  if (allMessages.length < 2) return
+  spindle.log.info(`[NovelistMemory] Got ${allMessages.length} messages for chat ${chatId}`)
+  if (allMessages.length < 2) {
+    spindle.log.info('[NovelistMemory] Not enough messages for whiteboard update (need at least 2)')
+    return
+  }
 
   // Get the last exchange (user + assistant)
   const recentMessages = allMessages.slice(-Math.min(allMessages.length, config.slidingWindowSize * 2))
@@ -59,29 +66,35 @@ async function updateWhiteboard(chatId: string, messageId?: string): Promise<voi
     recentContext
   )
 
-  const cfg = await getConfig()
-  const connectionId = await resolveBackgroundConnectionId(cfg.updaterConnectionId)
+  const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
+  spindle.log.info(`[NovelistMemory] Using connection for updater: ${connectionId ?? '(active connection fallback)'}`)
 
   let delta: WhiteboardDelta
 
   try {
-    const response = await spindle.generate.quiet({
-      type: 'quiet',
+    const genRequest: Record<string, unknown> = {
       messages: [
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
       parameters: { temperature: 0.3, max_tokens: 4000 },
-      connection_id: connectionId,
-    }) as { content: string }
+    }
+    if (connectionId) genRequest.connection_id = connectionId
+
+    spindle.log.info('[NovelistMemory] Sending whiteboard update quiet gen...')
+    const response = await (spindle.generate.quiet as Function)(genRequest, userId) as { content: string }
+    spindle.log.info(`[NovelistMemory] Quiet gen response received (${response.content?.length ?? 0} chars)`)
+
     // Strip markdown code fences if the model wraps its response
     let content = response.content.trim()
     if (content.startsWith('```')) {
       content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
     delta = JSON.parse(content)
+    spindle.log.info(`[NovelistMemory] Parsed whiteboard delta successfully`)
   } catch (err) {
-    spindle.log.error(`Whiteboard update generation failed: ${err}`)
+    spindle.log.error(`[NovelistMemory] Whiteboard update generation failed: ${String(err)}`)
+    if (err instanceof Error) spindle.log.error(`[NovelistMemory] Stack: ${err.stack}`)
     return
   }
 
@@ -147,7 +160,7 @@ async function updateWhiteboard(chatId: string, messageId?: string): Promise<voi
 
 // ─── Archive Check ──────────────────────────────────────────────────────────
 
-async function checkAndArchiveMessages(chatId: string): Promise<void> {
+async function checkAndArchiveMessages(chatId: string, userId?: string): Promise<void> {
   const config = await getConfig()
   const allMessages = await spindle.chat.getMessages(chatId)
   const archive = await getArchive(chatId)
@@ -188,16 +201,16 @@ async function checkAndArchiveMessages(chatId: string): Promise<void> {
       )
 
       const metadataCfg = await getConfig()
-      const metaConnId = await resolveBackgroundConnectionId(metadataCfg.updaterConnectionId)
-      const response = await spindle.generate.quiet({
-        type: 'quiet',
+      const metaConnId = await resolveBackgroundConnectionId(metadataCfg.updaterConnectionId, userId)
+      const metaGenRequest: Record<string, unknown> = {
         messages: [
           { role: 'system', content: metadataPrompt },
           { role: 'user', content: 'Extract metadata.' },
         ],
         parameters: { temperature: 0.1, max_tokens: 500 },
-        connection_id: metaConnId,
-      }) as { content: string }
+      }
+      if (metaConnId) metaGenRequest.connection_id = metaConnId
+      const response = await (spindle.generate.quiet as Function)(metaGenRequest, userId) as { content: string }
       let content = response.content.trim()
       if (content.startsWith('```')) {
         content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')

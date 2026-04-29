@@ -19,16 +19,18 @@ const DEFAULT_CONFIG: NovelistConfig = {
  * Resolve the connection ID to use for background LLM calls (updater + intern).
  * Priority: explicit override → sidecar (if useSidecar enabled) → undefined (active connection).
  */
-export async function resolveBackgroundConnectionId(overrideConnectionId?: string): Promise<string | undefined> {
+export async function resolveBackgroundConnectionId(overrideConnectionId?: string, userId?: string): Promise<string | undefined> {
   if (overrideConnectionId) return overrideConnectionId
 
   const config = await getConfig()
   if (!config.useSidecar) return undefined
 
   try {
-    const councilSettings = await spindle.council.getSettings()
-    // Check deprecated inline sidecar config (still the most common path)
-    const sidecarConnectionId = councilSettings.toolsSettings?.sidecar?.connectionProfileId
+    const councilSettings = await (spindle.council.getSettings as Function)(userId ? { userId } : undefined)
+    // Check sidecar config in council tools settings
+    const toolsSettings = councilSettings.toolsSettings as Record<string, unknown> | undefined
+    const sidecar = toolsSettings?.sidecar as Record<string, unknown> | undefined
+    const sidecarConnectionId = sidecar?.connectionProfileId as string | undefined
     if (sidecarConnectionId) return sidecarConnectionId
   } catch { /* no council settings or no sidecar configured */ }
 

@@ -114,7 +114,7 @@ spindle.registerTool({
 })
 
 // Handle tool invocations
-const toolHandler = async (payload: ToolInvocationPayloadDTO): Promise<string | void> => {
+const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): Promise<string | void> => {
   if (payload.toolName !== 'recall_scene') return
 
   const query = payload.args.query as string
@@ -131,14 +131,14 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO): Promise<string | 
     return 'Unable to determine the active chat. Make sure a chat is open.'
   }
 
-  const results = await queryIntern(chatId, { query, maxResults })
+  const results = await queryIntern(chatId, { query, maxResults }, userId)
   return formatInternResults(results)
 }
 ;(spindle.on as Function)('TOOL_INVOCATION', toolHandler)
 
 // ─── Generation Lifecycle Events ────────────────────────────────────────────
 
-spindle.on('GENERATION_ENDED', async (payload) => {
+;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
   const p = payload as { messageId?: string, chatId?: string, content?: string }
   // Determine chat ID
   let chatId = p.chatId
@@ -151,9 +151,11 @@ spindle.on('GENERATION_ENDED', async (payload) => {
 
   if (!chatId) return
 
+  spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
+
   // Process in the background — don't block the generation lifecycle
-  processGenerationEnd(chatId, p.messageId).catch(err => {
-    spindle.log.error(`Background processing failed: ${err}`)
+  processGenerationEnd(chatId, p.messageId, userId).catch(err => {
+    spindle.log.error(`[NovelistMemory] Background processing failed: ${err}`)
   })
 })
 
@@ -233,7 +235,7 @@ spindle.onFrontendMessage(async (raw, userId) => {
       const chatId = payload.data?.chatId as string
       const query = payload.data?.query as string
       if (!chatId || !query) return
-      const results = await queryIntern(chatId, { query, maxResults: 3 })
+      const results = await queryIntern(chatId, { query, maxResults: 3 }, userId)
       spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results } }, userId)
       break
     }

@@ -8,7 +8,7 @@ declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
 // ─── Intern Retrieval ───────────────────────────────────────────────────────
 
-export async function queryIntern(chatId: string, query: InternQuery): Promise<InternResult[]> {
+export async function queryIntern(chatId: string, query: InternQuery, userId?: string): Promise<InternResult[]> {
   const config = await getConfig()
   const whiteboard = await getWhiteboard(chatId)
   const archiveIndex = await getArchiveIndex(chatId)
@@ -26,7 +26,7 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
 
   // Step 1: Have the intern identify relevant messages from the index
   const internSystemPrompt = buildInternPrompt(query.query, archiveIndex, whiteboard)
-  const internConnId = await resolveBackgroundConnectionId(config.internConnectionId)
+  const internConnId = await resolveBackgroundConnectionId(config.internConnectionId, userId)
 
   let selectionResult: {
     intent: string
@@ -35,16 +35,20 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
   }
 
   try {
-    const response = await spindle.generate.quiet({
-      type: 'quiet',
+    const internGenRequest: Record<string, unknown> = {
       messages: [
         { role: 'system', content: internSystemPrompt },
         { role: 'user', content: `Find scenes relevant to: ${query.query}` },
       ],
       parameters: { temperature: 0.2, max_tokens: 2000 },
-      connection_id: internConnId,
-    }) as { content: string }
-    selectionResult = JSON.parse(response.content)
+    }
+    if (internConnId) internGenRequest.connection_id = internConnId
+    const response = await (spindle.generate.quiet as Function)(internGenRequest, userId) as { content: string }
+    let selectionContent = response.content.trim()
+    if (selectionContent.startsWith('```')) {
+      selectionContent = selectionContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+    }
+    selectionResult = JSON.parse(selectionContent)
   } catch (err) {
     spindle.log.error(`Intern selection failed: ${err}`)
     return [{
@@ -88,15 +92,15 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
         selection.relevanceNote
       )
 
-      const annotationResponse = await spindle.generate.quiet({
-        type: 'quiet',
+      const annotGenRequest: Record<string, unknown> = {
         messages: [
           { role: 'system', content: annotationPrompt },
           { role: 'user', content: 'Annotate this scene.' },
         ],
         parameters: { temperature: 0.2, max_tokens: 500 },
-        connection_id: internConnId,
-      }) as { content: string }
+      }
+      if (internConnId) annotGenRequest.connection_id = internConnId
+      const annotationResponse = await (spindle.generate.quiet as Function)(annotGenRequest, userId) as { content: string }
       annotation = annotationResponse.content
     } catch {
       annotation = selection.relevanceNote

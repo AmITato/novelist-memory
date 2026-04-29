@@ -159,7 +159,9 @@ Backend events via `spindle.on()` have typed overloads for generation events but
 
 - `spindle.on('TOOL_INVOCATION', handler)` — TypeScript overload resolution can fail. Use `(spindle.on as Function)('TOOL_INVOCATION', handler)` or extract the handler to a typed const.
 - `spindle.generate.quiet()` returns `Promise<unknown>` — cast result as `{ content: string }`.
-- `GenerationRequestDTO` requires `type: 'quiet' | 'raw' | 'batch'` — don't omit it.
+- `GenerationRequestDTO` does NOT have a `type` field — don't pass one. Fields: `messages`, `parameters`, `connection_id`, `signal`.
+- **Operator-scoped userId**: `spindle.generate.quiet(request, userId?)` accepts userId as an optional second argument. For operator-scoped extensions (or globally installed), this is REQUIRED — without it you get `Error: userId is required for operator-scoped extensions`. Thread userId from event handlers (`GENERATION_ENDED`, `TOOL_INVOCATION`, `onFrontendMessage`) through to all `quiet()`/`raw()` calls.
+- `spindle.on('GENERATION_ENDED', handler)` — use `(spindle.on as Function)('GENERATION_ENDED', (payload, userId) => {...})` to capture the userId from the catch-all overload.
 - `SpindleDrawerTabOptions` uses `title` (not `label`), and the handle has `destroy()` (not `dispose()`).
 - `ctx.onBackendMessage()` callback gets `(payload: unknown)` — no userId on the frontend side.
 - `spindle.onFrontendMessage()` callback gets `(payload: unknown, userId: string)` — userId is always present.
