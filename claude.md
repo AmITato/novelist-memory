@@ -1,6 +1,6 @@
 # Novelist Memory
 
-A Lumiverse Spindle extension implementing persistent memory architecture for long-form serialized AI fiction. Maintains narrative continuity across hundreds of messages by replacing raw conversation history with structured state (the Whiteboard) and intelligent scene retrieval (the Intern).
+A Lumiverse Spindle extension implementing persistent memory architecture for long-form serialized AI fiction. Maintains narrative continuity across hundreds of messages by replacing raw conversation history with structured state (the Whiteboard) and intelligent scene retrieval.
 
 ## Architecture
 
@@ -10,7 +10,9 @@ Three components:
 
 2. **Archive** — Full message history stored externally with rich metadata indexing (in-story timestamps, character tags, scene descriptors, emotional registers, thread tags). NOT loaded into primary context.
 
-3. **Intern** — A retrieval tool the primary model can call via `recall_scene`. Uses the sidecar model (or active connection) to search the Archive by narrative intent, not keywords. Returns annotated scenes with full original text.
+3. **Retrieval Tools** — Two tools the primary model can call:
+   - `recall_by_range` — Direct archive lookup by message index. Zero LLM overhead. The primary model sees message ranges in Chronicle entries and fetches full prose instantly.
+   - `recall_scene` — Semantic search via the Intern (background LLM). Slower but finds scenes by thematic/emotional relevance when the model doesn't know the exact message range.
 
 ## Project structure
 
@@ -62,7 +64,7 @@ bun run build:frontend # Frontend only
 | `context_handler` | Seed whiteboard data into generation context pre-assembly |
 | `chat_mutation` | Read chat messages for archival and context |
 | `chats` | Access active chat info, council settings for sidecar resolution |
-| `tools` | Register `recall_scene` tool for primary model |
+| `tools` | Register `recall_scene`, `recall_by_range`, and `random_number` tools |
 
 ## Hook points
 
@@ -72,26 +74,41 @@ Runs before prompt assembly. Reads the whiteboard for the active chat and attach
 ### Interceptor (priority 30)
 Runs after prompt assembly. Injects the serialized whiteboard as a system message immediately after the main system prompt. Creates a Prompt Breakdown entry ("Novelist Memory: Whiteboard") so the user can see it in the token breakdown.
 
-### Tool: `recall_scene`
-Registered as a council-eligible tool. The primary model calls it with a natural language query describing what scene it needs and why. The intern:
+### Tool: `recall_by_range` (inline_available)
+Direct archive lookup by message index range. No LLM calls, instant retrieval. The primary model reads `Messages: #N–#M` in Chronicle entries and calls this tool to fetch the full original prose. Returns formatted messages with metadata headers.
+
+### Tool: `recall_scene` (inline_available)
+Semantic search via the Intern (background LLM). The primary model calls it with a natural language query describing what scene it needs and why. The intern:
 1. Resolves connection (sidecar → explicit override → active connection)
 2. Searches the archive index by metadata via quiet gen
 3. Fetches full scenes and annotates them
 4. Returns formatted results with source info, annotations, and full text
 
+Slower than `recall_by_range` (2-3 background LLM calls) but finds scenes by thematic/emotional relevance when the exact message range isn't known.
+
+### Tool: `random_number` (inline_available)
+Test tool for validating inline function calling. Generates a random number between min and max.
+
 ### Events
-- `GENERATION_ENDED` — triggers whiteboard update + archive check. Payload: `{ generationId, chatId, messageId, content, usage }`.
-- `CHAT_CHANGED` — refreshes macros for the new chat. Payload: `{ chat: { id, ... } }` (NOT `{ chatId }`).
+- `GENERATION_ENDED` — triggers whiteboard update + archive check. Captured via catch-all overload to get userId: `(spindle.on as Function)('GENERATION_ENDED', (payload, userId) => {...})`.
+- `CHAT_CHANGED` — refreshes macros for the new chat.
 
 ## Data flow per generation cycle
 
 ```
 1. Context Handler reads whiteboard → attaches to context
 2. Interceptor injects serialized whiteboard into message array
-3. Primary model generates (can tool-call recall_scene mid-generation)
+   (Chronicle entries show "Messages: #N–#M" for each scene)
+3. Primary model generates:
+   a. During <think> phase, reads Chronicle summaries
+   b. Identifies scenes where full prose is needed
+   c. Calls recall_by_range with message indices from Chronicle
+   d. Receives full archived messages instantly (no LLM overhead)
+   e. Continues generation with full scene context
 4. GENERATION_ENDED fires → updater runs:
    a. Resolves background connection (sidecar if enabled, else active)
    b. Quiet gen analyzes new exchange → produces whiteboard delta
+      (includes sourceMessageRange for each Chronicle entry)
    c. Delta saved as pending update (auto-commits after review window)
    d. Messages past sliding window → archived with metadata extraction
 5. Frontend notified of pending update → user can review/edit/reject
@@ -105,7 +122,7 @@ Background LLM calls (updater + intern) resolve connections in this priority ord
 2. **Sidecar** — if `useSidecar` is enabled (default: true), reads `CouncilSettings.toolsSettings.sidecar.connectionProfileId`
 3. **Active connection** — falls back to the user's currently active connection/preset
 
-This is handled by `resolveBackgroundConnectionId()` in `config.ts`.
+This is handled by `resolveBackgroundConnectionId()` in `config.ts`. userId is threaded through for operator-scoped extensions.
 
 ## Configuration (stored in `config.json`)
 
@@ -126,7 +143,7 @@ This is handled by `resolveBackgroundConnectionId()` in `config.ts`.
 
 Single drawer tab ("Novelist Memory") with four sub-tabs:
 
-- **Whiteboard** — Read-only view of all six sections (Chronicle, Threads, Hearts, Palette, Canon, Author Notes) with JSON edit button. Shows pending update banners with commit/reject/edit actions.
+- **Whiteboard** — Read-only view of all six sections (Chronicle, Threads, Hearts, Palette, Canon, Author Notes) with inline JSON editor (textarea with save/cancel). Shows pending update banners with commit/reject/edit actions.
 - **Recall** — Manual intern query interface. Textarea for natural language queries, results displayed with source info, annotations, and expandable full scenes.
 - **Archive** — Stats dashboard: total archived messages, total tokens, character appearance counts, emotional register breakdown. Refresh button.
 - **Settings** — Full configuration form with:
@@ -141,19 +158,8 @@ Settings save immediately on change (no save button needed). Green "✓ Settings
 ### Frontend chat detection
 
 - On setup: calls `ctx.getActiveChat()` to detect the current chat immediately
-- On `CHAT_CHANGED` event: reads `payload.chat?.id ?? payload.chatId` (Lumiverse emits `{ chat: { id, ... } }`)
+- On `CHAT_CHANGED` event: reads `payload.chat?.id ?? payload.chatId`
 - On drawer tab activation: re-checks `ctx.getActiveChat()` in case chat changed while drawer was hidden
-
-## Lumiverse event payload shapes (important)
-
-These are the actual shapes — not what you'd guess from the event name:
-
-- `CHAT_CHANGED`: `{ chat: { id: string, ... } }` or `{ chatId: string, reattributedUserMessages: number }`
-- `GENERATION_ENDED`: `{ generationId: string, chatId: string, messageId: string, content: string, usage: object }`
-- `TOOL_INVOCATION`: `ToolInvocationPayloadDTO` — `{ toolName, args, requestId, councilMember?, contextMessages? }`
-
-Frontend events via `ctx.events.on()` receive `(payload: unknown)` — always cast.
-Backend events via `spindle.on()` have typed overloads for generation events but a catch-all `(payload: unknown, userId?: string)` for others.
 
 ## Spindle API type gotchas
 
@@ -165,13 +171,14 @@ Backend events via `spindle.on()` have typed overloads for generation events but
 - `SpindleDrawerTabOptions` uses `title` (not `label`), and the handle has `destroy()` (not `dispose()`).
 - `ctx.onBackendMessage()` callback gets `(payload: unknown)` — no userId on the frontend side.
 - `spindle.onFrontendMessage()` callback gets `(payload: unknown, userId: string)` — userId is always present.
+- **Inline function calling**: Tools registered with `inline_available: true` are sent to the primary model as function call schemas during generation (requires `enableFunctionCalling` in the preset's completion settings). Tool names are sanitized: `extensionId:toolName` → `extensionId__toolName`. The tool execution uses Lumiverse's existing 3-round inline tool call loop.
 
 ## Style conventions
 
 - **const over let**, early returns, no else blocks
 - **No classes** — plain exported functions
 - **Inline types** except shared interfaces in `types.ts`
-- **`spindle.log.info/warn/error()`** for all logging
+- **`spindle.log.info/warn/error()`** for all logging — prefix with `[NovelistMemory]`
 - **JSON storage** with `{ indent: 2 }` for human readability
 - **Error handling**: try/catch at boundaries, fallbacks for LLM failures (e.g., basic metadata when LLM extraction fails)
 - **Async patterns**: `Promise.all()` for concurrent work, fire-and-forget with `.catch()` for non-blocking background tasks
@@ -181,12 +188,20 @@ Backend events via `spindle.on()` have typed overloads for generation events but
 
 1. **Both context handler AND interceptor** — Context handler lets other extensions see the whiteboard data. Interceptor controls exact placement in the message array.
 2. **Auto-commit with review window** — Updates commit after 30s unless the user intervenes. Balances flow with safety.
-3. **Pending updates as separate storage** — Don't mutate the whiteboard until committed. Frontend shows pending state with commit/reject/edit actions.
+3. **Pending updates as separate storage** — Don't mutate the whiteboard until committed. Frontend shows pending state with commit/reject/edit actions. `commitPendingUpdate` checks `update.status` to prevent double-application of deltas.
 4. **Separate archive index** — Lightweight metadata file (`{chatId}.index.json`) for fast intern scanning without loading full message content.
-5. **Narrative-aware retrieval** — Intern uses LLM comprehension (not keyword search) to find scenes by emotional/thematic relevance.
+5. **Direct retrieval via message ranges** — Chronicle entries include `sourceMessageRange` (message indices). The primary model can call `recall_by_range` for instant full-prose retrieval with zero LLM overhead. This is the preferred retrieval path.
 6. **Scene-based chronicle, not message-count-based** — Update prompt instructs the model to add entries based on narrative density, not rigid counting.
 7. **Sidecar by default** — Background LLM calls use the Council sidecar connection to avoid burning expensive frontier model tokens on bookkeeping. Toggleable in settings.
 8. **Settings in drawer tab** — Lumiverse doesn't have a per-extension settings hook in the Spindle panel. All config lives in the drawer's Settings sub-tab.
+9. **Inline function calling** — Both `recall_by_range` and `recall_scene` use `inline_available: true` so the primary model (e.g., Lumia) can call them mid-generation during its thinking/planning phase without Council.
+
+## Bugs fixed (session log)
+
+1. **Whiteboard staying empty after generation** — `generate.quiet()` requires `userId` as a field on the request object for operator-scoped extensions. Was missing entirely → silent failure. Fixed by threading `userId` from `GENERATION_ENDED` event handler through the entire pipeline.
+2. **userId passed as second arg instead of request field** — `quiet(request, userId)` is wrong. `quiet({ ...request, userId })` is correct. The worker runtime spreads the input and the host reads `input.userId`.
+3. **Edit JSON button doubling entries** — `commitPendingUpdate()` didn't check if the update was already committed. Both `autoCommitDueUpdates()` and the `setTimeout` callback could fire for the same update, applying the delta twice. Fixed with `if (update.status === 'committed') return`.
+4. **Edit button was a no-op** — Just re-fetched data without opening an editor. Replaced with inline JSON textarea editor with save/cancel.
 
 ## Not yet implemented
 
@@ -194,3 +209,4 @@ Backend events via `spindle.on()` have typed overloads for generation events but
 - **Full audit** — every N messages, cross-check whiteboard against archive for drift
 - **Token counting** — using rough char/4 estimates; could use `spindle.tokens.countText()` for accuracy
 - **Connection picker UI** — dropdown listing available connections instead of raw ID text fields
+- **Phase 2.75 CoT integration** — Adding a section to Lumia's chain-of-thought template for Archive Dive retrieval during the thinking phase
