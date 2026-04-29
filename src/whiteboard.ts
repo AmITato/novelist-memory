@@ -135,6 +135,8 @@ export async function commitPendingUpdate(chatId: string, updateId: string): Pro
   const pending = await getPendingUpdates(chatId)
   const update = pending.find(p => p.id === updateId)
   if (!update) throw new Error(`Pending update ${updateId} not found`)
+  if (update.status === 'committed') return getWhiteboard(chatId)
+  if (update.status === 'rejected') throw new Error(`Update ${updateId} was already rejected`)
 
   const whiteboard = await getWhiteboard(chatId)
   const updated = applyDelta(whiteboard, update.changes)

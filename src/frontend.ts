@@ -523,14 +523,52 @@ export function setup(ctx: SpindleFrontendContext) {
       root.appendChild(notesSection)
     }
 
-    // Edit button
+    // Edit button — toggles an inline JSON editor
     const editBtn = document.createElement('button')
     editBtn.className = 'novelist-btn novelist-btn-ghost'
     editBtn.style.cssText = 'width: 100%; margin-top: 12px;'
     editBtn.textContent = '✎ Edit Whiteboard (JSON)'
     editBtn.onclick = () => {
-      ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: currentChatId } })
-      // The backend will send back the data, and we'll use the text editor
+      if (!currentWhiteboard || !currentChatId) return
+
+      const editorContainer = document.createElement('div')
+      editorContainer.style.cssText = 'margin-top: 12px;'
+
+      const textarea = document.createElement('textarea')
+      textarea.className = 'novelist-recall-input'
+      textarea.style.cssText = 'width: 100%; min-height: 300px; font-family: monospace; font-size: 12px;'
+      textarea.value = JSON.stringify(currentWhiteboard, null, 2)
+      editorContainer.appendChild(textarea)
+
+      const btnRow = document.createElement('div')
+      btnRow.style.cssText = 'display: flex; gap: 8px; margin-top: 8px;'
+
+      const saveBtn = document.createElement('button')
+      saveBtn.className = 'novelist-btn novelist-btn-primary'
+      saveBtn.textContent = '✓ Save'
+      saveBtn.onclick = () => {
+        try {
+          const edited = JSON.parse(textarea.value)
+          ctx.sendToBackend({ type: 'save_whiteboard', data: { chatId: currentChatId, whiteboard: edited } })
+          currentWhiteboard = edited
+          renderDrawer()
+        } catch (e) {
+          textarea.style.borderColor = 'rgba(244, 67, 54, 0.8)'
+          setTimeout(() => { textarea.style.borderColor = '' }, 2000)
+        }
+      }
+      btnRow.appendChild(saveBtn)
+
+      const cancelBtn = document.createElement('button')
+      cancelBtn.className = 'novelist-btn novelist-btn-ghost'
+      cancelBtn.textContent = '✕ Cancel'
+      cancelBtn.onclick = () => renderDrawer()
+      btnRow.appendChild(cancelBtn)
+
+      editorContainer.appendChild(btnRow)
+
+      // Replace the edit button with the editor
+      editBtn.replaceWith(editorContainer)
     }
     root.appendChild(editBtn)
   }
