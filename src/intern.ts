@@ -1,7 +1,7 @@
 import type { InternQuery, InternResult } from './types'
 import { getArchive, getArchiveIndex, getArchivedMessagesByIds } from './archive'
 import { getWhiteboard } from './whiteboard'
-import { getConfig } from './config'
+import { getConfig, resolveBackgroundConnectionId } from './config'
 import { buildInternPrompt, buildInternAnnotationPrompt } from './prompts'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
@@ -26,6 +26,7 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
 
   // Step 1: Have the intern identify relevant messages from the index
   const internSystemPrompt = buildInternPrompt(query.query, archiveIndex, whiteboard)
+  const internConnId = await resolveBackgroundConnectionId(config.internConnectionId)
 
   let selectionResult: {
     intent: string
@@ -41,7 +42,7 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
         { role: 'user', content: `Find scenes relevant to: ${query.query}` },
       ],
       parameters: { temperature: 0.2, max_tokens: 2000 },
-      connection_id: config.internConnectionId,
+      connection_id: internConnId,
     }) as { content: string }
     selectionResult = JSON.parse(response.content)
   } catch (err) {
@@ -94,7 +95,7 @@ export async function queryIntern(chatId: string, query: InternQuery): Promise<I
           { role: 'user', content: 'Annotate this scene.' },
         ],
         parameters: { temperature: 0.2, max_tokens: 500 },
-        connection_id: config.internConnectionId,
+        connection_id: internConnId,
       }) as { content: string }
       annotation = annotationResponse.content
     } catch {

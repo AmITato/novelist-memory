@@ -671,6 +671,7 @@ export function setup(ctx: SpindleFrontendContext) {
       enabled: boolean
       slidingWindowSize: number
       autoCommitUpdates: boolean
+      useSidecar: boolean
       updateReviewWindowMs: number
       whiteboardTokenBudget: number
       internConnectionId?: string
@@ -718,6 +719,14 @@ export function setup(ctx: SpindleFrontendContext) {
       'Automatically commit whiteboard updates after the review window',
       cfg.autoCommitUpdates,
       (val) => saveField('autoCommitUpdates', val)
+    ))
+
+    // Use sidecar toggle
+    generalSection.appendChild(makeToggleField(
+      'Use Sidecar Model',
+      'Use the Council sidecar connection for background LLM calls (updater + intern). Falls back to active connection if no sidecar is configured.',
+      cfg.useSidecar ?? true,
+      (val) => saveField('useSidecar', val)
     ))
 
     container.appendChild(generalSection)

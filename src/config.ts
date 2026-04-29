@@ -10,8 +10,29 @@ const DEFAULT_CONFIG: NovelistConfig = {
   autoCommitUpdates: true,
   updateReviewWindowMs: 30000,
   whiteboardTokenBudget: 12000,
+  useSidecar: true,
   compactionThreshold: 100,
   auditIntervalMessages: 40,
+}
+
+/**
+ * Resolve the connection ID to use for background LLM calls (updater + intern).
+ * Priority: explicit override → sidecar (if useSidecar enabled) → undefined (active connection).
+ */
+export async function resolveBackgroundConnectionId(overrideConnectionId?: string): Promise<string | undefined> {
+  if (overrideConnectionId) return overrideConnectionId
+
+  const config = await getConfig()
+  if (!config.useSidecar) return undefined
+
+  try {
+    const councilSettings = await spindle.council.getSettings()
+    // Check deprecated inline sidecar config (still the most common path)
+    const sidecarConnectionId = councilSettings.toolsSettings?.sidecar?.connectionProfileId
+    if (sidecarConnectionId) return sidecarConnectionId
+  } catch { /* no council settings or no sidecar configured */ }
+
+  return undefined
 }
 
 let cachedConfig: NovelistConfig | null = null

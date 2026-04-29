@@ -1,7 +1,7 @@
 import type { WhiteboardDelta, PendingUpdate, ArchivedMessage } from './types'
 import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates } from './whiteboard'
 import { archiveMessages, getArchive } from './archive'
-import { getConfig } from './config'
+import { getConfig, resolveBackgroundConnectionId } from './config'
 import { buildUpdatePrompt, buildArchiveMetadataPrompt } from './prompts'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
@@ -60,6 +60,7 @@ async function updateWhiteboard(chatId: string, messageId?: string): Promise<voi
   )
 
   const cfg = await getConfig()
+  const connectionId = await resolveBackgroundConnectionId(cfg.updaterConnectionId)
 
   let delta: WhiteboardDelta
 
@@ -71,7 +72,7 @@ async function updateWhiteboard(chatId: string, messageId?: string): Promise<voi
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
       parameters: { temperature: 0.3, max_tokens: 4000 },
-      connection_id: cfg.updaterConnectionId,
+      connection_id: connectionId,
     }) as { content: string }
     // Strip markdown code fences if the model wraps its response
     let content = response.content.trim()
@@ -187,6 +188,7 @@ async function checkAndArchiveMessages(chatId: string): Promise<void> {
       )
 
       const metadataCfg = await getConfig()
+      const metaConnId = await resolveBackgroundConnectionId(metadataCfg.updaterConnectionId)
       const response = await spindle.generate.quiet({
         type: 'quiet',
         messages: [
@@ -194,7 +196,7 @@ async function checkAndArchiveMessages(chatId: string): Promise<void> {
           { role: 'user', content: 'Extract metadata.' },
         ],
         parameters: { temperature: 0.1, max_tokens: 500 },
-        connection_id: metadataCfg.updaterConnectionId,
+        connection_id: metaConnId,
       }) as { content: string }
       let content = response.content.trim()
       if (content.startsWith('```')) {

@@ -116,6 +116,7 @@ export interface NovelistConfig {
   autoCommitUpdates: boolean
   updateReviewWindowMs: number
   whiteboardTokenBudget: number
+  useSidecar: boolean
   internModel?: string
   internConnectionId?: string
   updaterModel?: string
