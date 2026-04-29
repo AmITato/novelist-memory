@@ -185,7 +185,8 @@ export function serializeWhiteboard(wb: Whiteboard): string {
     sections.push('── CHRONICLE ──')
     for (const entry of wb.chronicle) {
       const chars = entry.charactersPresent.length > 0 ? ` | Characters: ${entry.charactersPresent.join(', ')}` : ''
-      sections.push(`[${entry.timestamp}, ${entry.location}]${chars}`)
+      const msgs = entry.sourceMessageRange ? ` | Messages: #${entry.sourceMessageRange[0]}–#${entry.sourceMessageRange[1]}` : ''
+      sections.push(`[${entry.timestamp}, ${entry.location}]${chars}${msgs}`)
       sections.push(entry.summary)
       if (entry.emotionalStates && Object.keys(entry.emotionalStates).length > 0) {
         const emotions = Object.entries(entry.emotionalStates).map(([k, v]) => `${k}: ${v}`).join('; ')

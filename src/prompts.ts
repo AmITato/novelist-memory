@@ -7,9 +7,13 @@ export function buildUpdatePrompt(
   currentWhiteboard: Whiteboard,
   newUserMessage: string,
   newAssistantMessage: string,
-  recentContext: string
+  recentContext: string,
+  messageRange?: [number, number]
 ): string {
   const serialized = serializeWhiteboard(currentWhiteboard)
+  const rangeNote = messageRange
+    ? `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
+    : ''
 
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
 
@@ -22,13 +26,14 @@ ${recentContext}
 LATEST EXCHANGE:
 USER: ${newUserMessage}
 ASSISTANT: ${newAssistantMessage}
+${rangeNote}
 
 INSTRUCTIONS:
 Analyze the latest exchange and produce a JSON delta object describing what changed. Be PRECISE and SPECIFIC — this whiteboard becomes the ONLY source of truth once messages scroll out of context.
 
 SECTION GUIDELINES:
 
-CHRONICLE: Add an entry when there's a scene shift, significant emotional beat, relationship change, or plot advancement. Use narrative density to decide — sometimes one message is three scenes, sometimes five messages are one scene. Preserve sensory/environmental context. Include verbatim dialogue ONLY when exact wording matters for future callbacks.
+CHRONICLE: Add an entry when there's a scene shift, significant emotional beat, relationship change, or plot advancement. Use narrative density to decide — sometimes one message is three scenes, sometimes five messages are one scene. Preserve sensory/environmental context. Include verbatim dialogue ONLY when exact wording matters for future callbacks. ALWAYS include sourceMessageRange — the [start, end] message indices this entry covers. This is critical for scene retrieval.
 
 THREADS: Track ALL active narrative threads including subtle foreshadowing seeds. Mark status changes (SEEDED→ACTIVE, ACTIVE→DORMANT, etc). Update trigger conditions and downstream consequences as the narrative evolves. This is the MOST CRITICAL section — subtle threads that aren't tracked here WILL be lost.
 
@@ -45,7 +50,7 @@ If a section has NO changes from this exchange, OMIT it from the delta entirely.
 Respond with ONLY a valid JSON object matching this schema:
 {
   "chronicle": {
-    "add": [{ "id": "chr_<unique>", "timestamp": "...", "location": "...", "summary": "...", "charactersPresent": [...], "emotionalStates": {...}, "sensoryContext": "...", "verbatimDialogue": [...] }],
+    "add": [{ "id": "chr_<unique>", "timestamp": "...", "location": "...", "summary": "...", "charactersPresent": [...], "emotionalStates": {...}, "sensoryContext": "...", "verbatimDialogue": [...], "sourceMessageRange": [startIndex, endIndex] }],
     "update": [{ "id": "<existing_id>", ...fields_to_update }]
   },
   "threads": {

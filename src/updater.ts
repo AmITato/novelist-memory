@@ -59,11 +59,21 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
     .map((m: { role: string, content: string }) => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
     .join('\n\n')
 
+  // Determine message indices for the latest exchange so Chronicle entries
+  // can be tagged with sourceMessageRange for direct retrieval
+  const userIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastUser as { id: string }).id)
+  const assistantIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastAssistant as { id: string }).id)
+  const messageRange: [number, number] | undefined =
+    userIndex >= 0 && assistantIndex >= 0
+      ? [Math.min(userIndex, assistantIndex), Math.max(userIndex, assistantIndex)]
+      : undefined
+
   const updatePrompt = buildUpdatePrompt(
     whiteboard,
     lastUser.content,
     lastAssistant.content,
-    recentContext
+    recentContext,
+    messageRange
   )
 
   const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)

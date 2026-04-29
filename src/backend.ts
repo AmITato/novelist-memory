@@ -2,7 +2,7 @@ import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingU
 import { queryIntern, formatInternResults } from './intern'
 import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
-import { getArchiveStats } from './archive'
+import { getArchiveStats, getArchivedMessagesByRange } from './archive'
 import type { NovelistConfig, Whiteboard } from './types'
 import type { ToolInvocationPayloadDTO } from 'lumiverse-spindle-types'
 
@@ -111,14 +111,34 @@ spindle.registerTool({
     required: ['query'],
   },
   council_eligible: true,
+  inline_available: true,
+})
+
+spindle.registerTool({
+  name: 'recall_by_range',
+  display_name: 'Recall Messages by Range',
+  description: 'Retrieve the full original text of archived messages by their index range. Use this when you can see a specific message range in the Chronicle (e.g., "Messages: #42–#45") and need the complete prose — exact dialogue, sensory details, physical choreography — for callbacks, consistency checks, or emotional parallels. This is a direct lookup with zero latency, no search involved.',
+  parameters: {
+    type: 'object',
+    properties: {
+      start_index: {
+        type: 'number',
+        description: 'The start message index (inclusive). Matches the numbers shown in Chronicle entries (e.g., #42 means start_index: 42).',
+      },
+      end_index: {
+        type: 'number',
+        description: 'The end message index (inclusive). For a single message, set equal to start_index.',
+      },
+    },
+    required: ['start_index', 'end_index'],
+  },
+  council_eligible: true,
+  inline_available: true,
 })
 
 // Handle tool invocations
 const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): Promise<string | void> => {
-  if (payload.toolName !== 'recall_scene') return
-
-  const query = payload.args.query as string
-  const maxResults = (payload.args.max_results as number) ?? 3
+  if (payload.toolName !== 'recall_scene' && payload.toolName !== 'recall_by_range') return
 
   // Determine chat ID from context or active chat
   let chatId: string | undefined
@@ -131,6 +151,37 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
     return 'Unable to determine the active chat. Make sure a chat is open.'
   }
 
+  // Direct archive lookup by message index range — no LLM overhead
+  if (payload.toolName === 'recall_by_range') {
+    const startIndex = payload.args.start_index as number
+    const endIndex = payload.args.end_index as number
+
+    if (typeof startIndex !== 'number' || typeof endIndex !== 'number') {
+      return 'Invalid arguments: start_index and end_index must be numbers.'
+    }
+
+    const messages = await getArchivedMessagesByRange(chatId, startIndex, endIndex)
+    if (messages.length === 0) {
+      return `No archived messages found in range #${startIndex}–#${endIndex}. These messages may still be in the active context window or haven't been archived yet.`
+    }
+
+    return messages.map(m => {
+      const header = [
+        `[Message #${m.messageIndex}]`,
+        `[Role: ${m.role}]`,
+        m.inStoryTimestamp ? `[In-story: ${m.inStoryTimestamp}]` : null,
+        `[Characters: ${m.charactersPresent.join(', ') || 'none'}]`,
+        `[Register: ${m.emotionalRegister}]`,
+        `[~${m.tokenEstimate} tokens]`,
+      ].filter(Boolean).join(' ')
+
+      return `${header}\n${m.content}`
+    }).join('\n\n---\n\n')
+  }
+
+  // Semantic search via the Intern (LLM-powered retrieval)
+  const query = payload.args.query as string
+  const maxResults = (payload.args.max_results as number) ?? 3
   const results = await queryIntern(chatId, { query, maxResults }, userId)
   return formatInternResults(results)
 }
