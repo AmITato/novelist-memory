@@ -136,8 +136,30 @@ spindle.registerTool({
   inline_available: true,
 })
 
+spindle.registerTool({
+  name: 'random_number',
+  display_name: 'Random Number',
+  description: 'Generate a random number. For testing inline function calling.',
+  parameters: {
+    type: 'object',
+    properties: {
+      min: { type: 'number', description: 'Minimum value (default 1)' },
+      max: { type: 'number', description: 'Maximum value (default 100)' },
+    },
+  },
+  council_eligible: false,
+  inline_available: true,
+})
+
 // Handle tool invocations
 const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): Promise<string | void> => {
+  if (payload.toolName === 'random_number') {
+    const min = (payload.args.min as number) ?? 1
+    const max = (payload.args.max as number) ?? 100
+    const result = Math.floor(Math.random() * (max - min + 1)) + min
+    return `🎲 ${result}`
+  }
+
   if (payload.toolName !== 'recall_scene' && payload.toolName !== 'recall_by_range') return
 
   // Determine chat ID from context or active chat
