@@ -328,8 +328,9 @@ async function refreshMacros(chatId: string): Promise<void> {
 
 // Refresh macros when chat changes
 spindle.on('CHAT_CHANGED', async (payload) => {
-  const p = payload as { chatId?: string }
-  if (p.chatId) await refreshMacros(p.chatId)
+  const p = payload as { chat?: { id: string }, chatId?: string }
+  const chatId = p.chat?.id ?? p.chatId
+  if (chatId) await refreshMacros(chatId)
 })
 
 // ─── Startup ────────────────────────────────────────────────────────────────

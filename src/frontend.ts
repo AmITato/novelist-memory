@@ -232,6 +232,14 @@ export function setup(ctx: SpindleFrontendContext) {
   let archiveStats: ArchiveStats['stats'] | null = null
   let drawerContainer: HTMLElement | null = null
 
+  // ─── Detect Active Chat on Load ──────────────────────────────────────
+
+  const activeChat = ctx.getActiveChat()
+  if (activeChat.chatId) {
+    currentChatId = activeChat.chatId
+    ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: activeChat.chatId } })
+  }
+
   // ─── Drawer Tab ─────────────────────────────────────────────────────────
 
   const drawerHandle = ctx.ui.registerDrawerTab({
@@ -247,6 +255,16 @@ export function setup(ctx: SpindleFrontendContext) {
   // Re-render when the tab is activated
   drawerHandle.onActivate(() => {
     drawerContainer = drawerHandle.root
+    // Re-check active chat in case it changed while we were hidden
+    const chat = ctx.getActiveChat()
+    if (chat.chatId && chat.chatId !== currentChatId) {
+      currentChatId = chat.chatId
+      currentWhiteboard = null
+      pendingUpdates = []
+      recallResults = []
+      archiveStats = null
+      ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: chat.chatId } })
+    }
     renderDrawer()
   })
 
@@ -679,8 +697,9 @@ export function setup(ctx: SpindleFrontendContext) {
   // ─── Event Handling ─────────────────────────────────────────────────────
 
   ctx.events.on('CHAT_CHANGED', (raw) => {
-    const payload = raw as { chatId?: string }
-    currentChatId = payload.chatId ?? null
+    const payload = raw as { chat?: { id: string }, chatId?: string }
+    const newChatId = payload.chat?.id ?? payload.chatId ?? null
+    currentChatId = newChatId
     currentWhiteboard = null
     pendingUpdates = []
     recallResults = []
