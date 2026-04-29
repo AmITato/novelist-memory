@@ -182,23 +182,39 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
       return 'Invalid arguments: start_index and end_index must be numbers.'
     }
 
-    const messages = await getArchivedMessagesByRange(chatId, startIndex, endIndex)
-    if (messages.length === 0) {
-      return `No archived messages found in range #${startIndex}–#${endIndex}. These messages may still be in the active context window or haven't been archived yet.`
+    // Try the archive first
+    const archived = await getArchivedMessagesByRange(chatId, startIndex, endIndex)
+    if (archived.length > 0) {
+      return archived.map(m => {
+        const header = [
+          `[Message #${m.messageIndex}]`,
+          `[Role: ${m.role}]`,
+          m.inStoryTimestamp ? `[In-story: ${m.inStoryTimestamp}]` : null,
+          `[Characters: ${m.charactersPresent.join(', ') || 'none'}]`,
+          `[Register: ${m.emotionalRegister}]`,
+          `[~${m.tokenEstimate} tokens]`,
+        ].filter(Boolean).join(' ')
+
+        return `${header}\n${m.content}`
+      }).join('\n\n---\n\n')
     }
 
-    return messages.map(m => {
-      const header = [
-        `[Message #${m.messageIndex}]`,
-        `[Role: ${m.role}]`,
-        m.inStoryTimestamp ? `[In-story: ${m.inStoryTimestamp}]` : null,
-        `[Characters: ${m.charactersPresent.join(', ') || 'none'}]`,
-        `[Register: ${m.emotionalRegister}]`,
-        `[~${m.tokenEstimate} tokens]`,
-      ].filter(Boolean).join(' ')
+    // Fall back to reading directly from the chat history — messages may
+    // not be archived yet (new chat, within sliding window, etc.)
+    try {
+      const allMessages = await spindle.chat.getMessages(chatId)
+      const sliced = allMessages.filter((_: unknown, i: number) => i >= startIndex && i <= endIndex)
+      if (sliced.length === 0) {
+        return `No messages found in range #${startIndex}–#${endIndex}. The chat may not have that many messages yet.`
+      }
 
-      return `${header}\n${m.content}`
-    }).join('\n\n---\n\n')
+      return sliced.map((m: { role: string, content: string }, i: number) => {
+        const idx = startIndex + i
+        return `[Message #${idx}] [Role: ${m.role}]\n${m.content}`
+      }).join('\n\n---\n\n')
+    } catch {
+      return `No archived messages found in range #${startIndex}–#${endIndex} and could not read chat history.`
+    }
   }
 
   // Semantic search via the Intern (LLM-powered retrieval)
