@@ -1,0 +1,17 @@
+{
+  "name": "novelist-memory",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/backend.ts --outdir dist --target bun --format esm && bun build src/frontend.ts --outdir dist --target browser --format esm",
+    "build:backend": "bun build src/backend.ts --outdir dist --target bun --format esm",
+    "build:frontend": "bun build src/frontend.ts --outdir dist --target browser --format esm",
+    "dev": "bun run build --watch"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "lumiverse-spindle-types": "latest",
+    "typescript": "latest"
+  }
+}

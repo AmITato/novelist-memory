@@ -1,0 +1,19 @@
+{
+  "version": "0.1.0",
+  "name": "Novelist Memory",
+  "identifier": "novelist_memory",
+  "author": "tato",
+  "github": "https://github.com/AmITato/novelist-memory",
+  "homepage": "https://github.com/AmITato/novelist-memory",
+  "permissions": [
+    "generation",
+    "interceptor",
+    "context_handler",
+    "chat_mutation",
+    "chats",
+    "tools"
+  ],
+  "entry_backend": "dist/backend.js",
+  "entry_frontend": "dist/frontend.js",
+  "interceptorTimeoutMs": 30000
+}
