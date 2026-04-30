@@ -444,6 +444,6 @@ The file `cot_phase_novelist_memory.md` contains the full integration guide for 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
 - **Full audit** — every N messages, cross-check whiteboard against archive for drift
 - ~~**Token counting**~~ — implemented via `src/tokens.ts`; uses `spindle.tokens.countText()` with char/4 fallback
-- **Connection picker UI** — dropdown listing available connections instead of raw ID text fields
+- ~~**Connection picker UI**~~ — implemented: Settings tab lists available connections via `spindle.connections.list()` as `<select>` dropdowns
 - **Calibration bank UI** — frontend interface for populating per-chat calibration examples (currently requires manual JSON editing)
 - **`removeSnapshotsForMessage` cleanup** — function exists in `snapshots.ts` but is no longer called. Consider removing or repurposing for manual cleanup.

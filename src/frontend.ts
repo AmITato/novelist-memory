@@ -311,6 +311,8 @@ export function setup(ctx: SpindleFrontendContext) {
   let archiveStats: ArchiveStats['stats'] | null = null
   let drawerContainer: HTMLElement | null = null
   let currentConfig: Record<string, unknown> | null = null
+  let whiteboardTokenInfo: { tokens: number, approximate: boolean, tokenizer: string, budget: number } | null = null
+  let availableConnections: Array<{ id: string, name: string, provider: string, model: string }> | null = null
 
   // ─── Detect Active Chat on Load ──────────────────────────────────────
 
@@ -343,6 +345,7 @@ export function setup(ctx: SpindleFrontendContext) {
       pendingUpdates = []
       recallResults = []
       archiveStats = null
+      whiteboardTokenInfo = null
       ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: chat.chatId } })
     }
     renderDrawer()
@@ -451,6 +454,30 @@ export function setup(ctx: SpindleFrontendContext) {
       hearts?: Array<{ from: string, to: string, status: string, processing?: string, nextBeat?: string }>
       palette?: { voiceNotes?: Record<string, string>, fragileDetails?: string[] }
       authorNotes?: string[]
+    }
+
+    // Token meter — shows current whiteboard size against the configured budget
+    if (whiteboardTokenInfo) {
+      const info = whiteboardTokenInfo
+      const pct = info.budget > 0 ? Math.min(100, Math.round((info.tokens / info.budget) * 100)) : 0
+      const barColor = pct >= 100 ? '#e06c75' : pct >= 75 ? '#e5c07b' : '#98c379'
+      const tokenizerNote = info.approximate
+        ? ` <span title="Lumiverse couldn't resolve a tokenizer for the active model — this is a char/4 fallback estimate" style="opacity: 0.7;">~estimate</span>`
+        : ` <span title="Counted with the active model's tokenizer (${escapeHtml(info.tokenizer)})" style="opacity: 0.6;">${escapeHtml(info.tokenizer)}</span>`
+      const meter = document.createElement('div')
+      meter.style.cssText = 'margin-bottom: 16px; padding: 10px 12px; background: var(--lumiverse-surface, rgba(255,255,255,0.04)); border: 1px solid var(--lumiverse-border, rgba(255,255,255,0.1)); border-radius: 6px;'
+      meter.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 12px;">
+          <span><strong>Whiteboard size:</strong> ${info.tokens.toLocaleString()} / ${info.budget.toLocaleString()} tokens${tokenizerNote}</span>
+          <span style="color: ${barColor}; font-weight: 600;">${pct}%</span>
+        </div>
+        <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
+          <div style="width: ${pct}%; height: 100%; background: ${barColor}; transition: width 0.3s ease;"></div>
+        </div>
+      `
+      root.appendChild(meter)
+    } else if (currentChatId) {
+      ctx.sendToBackend({ type: 'get_whiteboard_tokens', data: { chatId: currentChatId } })
     }
 
     // Chronicle
@@ -828,16 +855,21 @@ export function setup(ctx: SpindleFrontendContext) {
 
     const modelSection = createSection('Model Connections', 'optional')
 
-    modelSection.appendChild(makeTextField(
-      'Intern Connection ID',
-      'Specific connection for the retrieval model (blank = use active)',
+    // Request connections list if we don't have it yet
+    if (!availableConnections) {
+      ctx.sendToBackend({ type: 'list_connections' })
+    }
+
+    modelSection.appendChild(makeConnectionField(
+      'Intern Connection',
+      'Model for the retrieval intern (scene search). Blank = use active connection.',
       cfg.internConnectionId ?? '',
       (val) => saveField('internConnectionId', val || undefined)
     ))
 
-    modelSection.appendChild(makeTextField(
-      'Updater Connection ID',
-      'Specific connection for the whiteboard updater model (blank = use active)',
+    modelSection.appendChild(makeConnectionField(
+      'Updater Connection',
+      'Model for the whiteboard updater (post-gen analysis). Blank = use active connection.',
       cfg.updaterConnectionId ?? '',
       (val) => saveField('updaterConnectionId', val || undefined)
     ))
@@ -936,6 +968,61 @@ export function setup(ctx: SpindleFrontendContext) {
     return field
   }
 
+  function makeConnectionField(label: string, desc: string, value: string, onChange: (val: string) => void): HTMLElement {
+    const field = document.createElement('div')
+    field.className = 'novelist-field'
+    field.style.flexDirection = 'column'
+    field.style.alignItems = 'stretch'
+
+    const labelDiv = document.createElement('div')
+    labelDiv.className = 'novelist-field-label'
+    labelDiv.innerHTML = `${escapeHtml(label)}<div class="novelist-field-desc">${escapeHtml(desc)}</div>`
+    field.appendChild(labelDiv)
+
+    if (availableConnections && availableConnections.length > 0) {
+      const select = document.createElement('select')
+      select.className = 'novelist-input novelist-input-wide'
+      select.style.cssText = 'appearance: auto; text-align: left; padding: 6px 8px; cursor: pointer;'
+
+      // Default option
+      const defaultOpt = document.createElement('option')
+      defaultOpt.value = ''
+      defaultOpt.textContent = '— Use active connection —'
+      select.appendChild(defaultOpt)
+
+      for (const conn of availableConnections) {
+        const opt = document.createElement('option')
+        opt.value = conn.id
+        opt.textContent = `${conn.name} (${conn.provider}/${conn.model})`
+        if (conn.id === value) opt.selected = true
+        select.appendChild(opt)
+      }
+
+      if (value && !availableConnections.find(c => c.id === value)) {
+        // Current value doesn't match any known connection — show it as-is
+        const unknownOpt = document.createElement('option')
+        unknownOpt.value = value
+        unknownOpt.textContent = `⚠ ${value} (unknown)`
+        unknownOpt.selected = true
+        select.appendChild(unknownOpt)
+      }
+
+      select.onchange = () => onChange(select.value)
+      field.appendChild(select)
+    } else {
+      // Fallback to text input if connections haven't loaded
+      const input = document.createElement('input')
+      input.type = 'text'
+      input.className = 'novelist-input novelist-input-wide'
+      input.value = value
+      input.placeholder = availableConnections === null ? 'Loading connections...' : 'No connections found — enter ID manually'
+      input.onchange = () => onChange(input.value.trim())
+      field.appendChild(input)
+    }
+
+    return field
+  }
+
   // ─── Helpers ────────────────────────────────────────────────────────────
 
   function createSection(title: string, subtitle: string): HTMLElement {
@@ -960,8 +1047,27 @@ export function setup(ctx: SpindleFrontendContext) {
         const data = payload.data as unknown as WhiteboardData
         if (data.chatId === currentChatId) {
           currentWhiteboard = data.whiteboard
+          // Whiteboard changed → token count is stale, re-request it
+          whiteboardTokenInfo = null
+          ctx.sendToBackend({ type: 'get_whiteboard_tokens', data: { chatId: data.chatId } })
           renderDrawer()
         }
+        break
+      }
+
+      case 'whiteboard_tokens': {
+        const data = payload.data as { chatId: string, tokens: number, approximate: boolean, tokenizer: string, budget: number }
+        if (data.chatId === currentChatId) {
+          whiteboardTokenInfo = { tokens: data.tokens, approximate: data.approximate, tokenizer: data.tokenizer, budget: data.budget }
+          renderDrawer()
+        }
+        break
+      }
+
+      case 'connections_list': {
+        const data = payload.data as { connections: Array<{ id: string, name: string, provider: string, model: string }> }
+        availableConnections = data.connections
+        renderDrawer()
         break
       }
 
@@ -1054,6 +1160,7 @@ export function setup(ctx: SpindleFrontendContext) {
     pendingUpdates = []
     recallResults = []
     archiveStats = null
+    whiteboardTokenInfo = null
     if (currentChatId) {
       ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: currentChatId } })
     }

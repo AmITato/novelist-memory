@@ -728,6 +728,20 @@ spindle.onFrontendMessage(async (raw, userId) => {
       break
     }
 
+    case 'list_connections': {
+      try {
+        const connections = await spindle.connections.list(userId)
+        spindle.sendToFrontend({
+          type: 'connections_list',
+          data: { connections: connections.map(c => ({ id: c.id, name: c.name, provider: c.provider, model: c.model })) },
+        }, userId)
+      } catch (err) {
+        spindle.log.warn(`[NovelistMemory] Failed to list connections: ${err}`)
+        spindle.sendToFrontend({ type: 'connections_list', data: { connections: [] } }, userId)
+      }
+      break
+    }
+
     case 'get_whiteboard_tokens': {
       const chatId = payload.data?.chatId as string
       if (!chatId) return
