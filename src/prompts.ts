@@ -47,64 +47,65 @@ function formatCalibrationExamples(section: string, bankExamples: string[] | und
   return `\nSTRUCTURAL EXAMPLE for ${section} (match this density — adapt content to YOUR story):\n${defaultExample}\n`
 }
 
-const DEFAULT_CHRONICLE = `[Day 1, 07:15, Apartment Kitchen, 3rd Floor] | Characters: A, B | Messages: #1–#3
-B woke A with a door-kick and burnt breakfast. Apartment smelled like scorched oil and dark roast. A's ambient tell was contracted tight — warm room meant content sleep. B masked pride behind aggression: pressed uniform on the door handle, insults layered over care. Key callback detail: B can't cook but plates the results with zero shame; A can cook, which B considers a personal affront. Emotional register: aggressive domesticity.`
+const DEFAULT_CHRONICLE = `[Night 3, 23:40, Magda's Office, 2nd Floor above the bar] | Characters: Magda Koss, Yusuf | Messages: #8–#10
+Yusuf brought the ledger. Magda read it standing, one hand on the window frame — didn't sit, didn't offer him a chair. The columns didn't add up and they both knew it. She asked who else had seen it; he said nobody, too fast. Office smelled like anise liqueur and old radiator dust. Key callback detail: Magda closed the ledger with her left hand and slid it into the desk drawer — the locked one, not the one she uses for show. Emotional register: controlled interrogation masked as casual conversation.`
 
-const DEFAULT_THREAD = `Name: THE HIDDEN ABILITY — A's Deception
+const DEFAULT_THREAD = `Name: THE MISSING MONTH — Sable's Unaccounted Time
 Status: SEEDED
-Last touched: Day 1, Scene 1
-Summary: A's ability appears to have properties beyond what's been publicly shown. Guardian B's behavior during the morning routine hints at awareness of a deeper layer. Only one touchpoint so far — status remains SEEDED until a second scene develops this thread.
+Last touched: Night 3, Scene 2
+Summary: A gap in Sable's timeline — she claims she was traveling, but the dates don't align with the transit logs the protagonist found. Only one touchpoint so far (the log discrepancy). Status remains SEEDED until a second scene develops this thread.
 Dependencies:
-  - The group's threat assessment of A (not yet established)
+  - Protagonist's access to the transit archive (established Scene 1)
 Trigger conditions:
-  - Authority figure testing A's ability directly (first real assessment)
-  - Emotional spike forcing an involuntary display beyond the passive baseline
-  - Sustained observation — someone noticing inconsistencies between A's claimed limits and actual behavior
+  - Someone else references Sable's whereabouts during the missing period
+  - Sable tells a story that contradicts the log dates
+  - A third character mentions seeing Sable somewhere she claims she wasn't
 Downstream consequences:
-  - Authority figure: trust violation if deception is discovered
-  - Organization: reclassification, increased monitoring
-  - Rival dynamics: other characters' coping strategies may rely on false assumptions about A's limits`
+  - Trust collapse if Sable's alibi unravels publicly
+  - Protagonist must decide whether to confront directly or investigate further
+  - If the missing month connects to the central conflict, it reframes Sable's role entirely`
 
-const DEFAULT_HEART = `B → A:
-  Status: Guardian-ward. The axis. Non-negotiable anchor.
-  Bond texture: Warmth expressed through aggression and competition. B brags about A to peers unprompted. Never says "I love you" directly — says it through actions (pressing clothes, threatening bureaucrats, learning to cook despite inability).
-  Key knowledge: B reads A's emotional state through A's ambient tell instinctively, not analytically. This is the deepest intimacy in the story.
-  Sensory memories: The first time A used the familial term — B's physical reaction (involuntary, visible, quickly hidden). This memory is LOAD-BEARING.
-  Unresolved: B knows the organization hasn't stopped wanting A. Hasn't told A how close the last conversation got.
-  Next beat: B's controlled exterior cracks when A faces real danger for the first time.`
+const DEFAULT_HEART = `Ren → Cassia:
+  Status: Ex-partners, 3 years cold. Functional hostility over shared professional obligations.
+  Bond texture: Clipped, efficient communication that occasionally cracks into old rhythms — finishing each other's sentences, then catching themselves. Ren defaults to formality when emotional; Cassia defaults to sarcasm. Both are masks for the same wound.
+  Key knowledge: Ren knows Cassia left because of the promotion, not the affair. Has never said this aloud. Cassia doesn't know that Ren knows the real reason.
+  Sensory memories: The sound of Cassia's keyring — three keys and a brass bell. Ren still flinches at similar sounds in public.
+  Unresolved: Whether the professional collaboration will force them to actually talk about what happened, or whether they can maintain the pretense indefinitely.
+  Next beat: A situation that requires genuine trust — not just professional competence — between them.`
 
-const DEFAULT_PALETTE = `formattingAssignments: { "A": "#DDA0DD", "B": "#FF6B81", "C": "#FF4500" }
+const DEFAULT_PALETTE = `formattingAssignments: { "Magda": "#C9A96E", "Yusuf": "#7BA7BC", "Narrator": "#D4D4D4" }
 
 voiceNotes: {
-  "B": "Short punchy fragments. Creative profanity — never generic, always inventive. Uses nicknames, never full names unless furious. Exclamation points earned, not default.",
-  "Authority": "Flat periods. Ends sentences like closing doors. Dry humor so arid people miss it. Never raises voice — lowers it to wound."
+  "Magda": "Full sentences, never fragments. Speaks like someone who learned the language formally — no contractions, precise word choice. Uses silence as punctuation. When angry, gets quieter and more polite, not louder.",
+  "Yusuf": "Run-on energy. Stacks clauses with 'and' instead of periods. Laughs mid-sentence when nervous. Switches to his first language for profanity only — never translated, never explained."
 }
 
 sensorySignatures: {
-  "A": "Ambient field: [primary sense] shifts with mood. MAP: anger=[intensifies], calm=[barely perceptible], happiness=[field CONTRACTS/diminishes] — the tell is the ABSENCE of the unusual, not its presence."
+  "Magda": "Always smells faintly of anise — the liqueur she drinks but never finishes. Hands are cold; people notice when she touches them. Stands in doorframes rather than entering rooms fully.",
+  "Yusuf": "Loud breather — audible through walls. Wears a watch that ticks. Sits with one foot under him, never both feet on the floor."
 }
 
 fragileDetails: [
-  "A fidgets with a specific accessory when anxious — frequency increases with stress.",
-  "B burns food. Every time. Not a running gag — genuine inability. Plates it anyway.",
-  "A's room smells like [specific scent combination]. Left [device] running overnight."
+  "Magda's desk has two drawers — one unlocked for show, one locked for real. She uses the wrong hand to open the locked one.",
+  "Yusuf carries a photograph in his wallet that he's never shown anyone. The corner is worn from being touched.",
+  "The bar below Magda's office plays the same jazz record every Thursday. She times her meetings to it."
 ]`
 
-const DEFAULT_CANON = `timelinePosition: "Day 1, Pre-Arc 2. Phase 1: Foundation."
+const DEFAULT_CANON = `timelinePosition: "Night 3. Act 1: Setup. Investigation phase."
 
 upcomingEvents: [
-  { "event": "Arc 2 — First group test (TODAY)", "deviations": "Extra character changes group math. Authority figure's first direct assessment — plant their observation patterns.", "foreshadowingNeeded": "Establish authority's habits before the deception thread fires." },
-  { "event": "Arc 3 — Paired exercise (within first week)", "deviations": "Odd count changes pairing structure. Who gravitates toward the OC? Who avoids?", "foreshadowingNeeded": "Seed team dynamics during current test." }
+  { "event": "The Dockside Meeting (Night 4)", "deviations": "Protagonist attending changes the informant's willingness to talk — they weren't expecting a stranger.", "foreshadowingNeeded": "Establish the informant's paranoia before the meeting. Show them checking exits, changing seats." },
+  { "event": "The Archive Opens (Day 5)", "deviations": "Protagonist's presence in the archive will be logged. This creates a paper trail.", "foreshadowingNeeded": "Mention the archive's sign-in policy casually before Day 5." }
 ]
 
 butterflyLog: [
-  { "change": "Extra character exists in the group.", "projectedConsequences": "Every team exercise, pairing, and ranking shifts. Authority's calculus changes. One extra voice in every group dynamic." }
+  { "change": "Protagonist chose to copy the ledger instead of taking it.", "projectedConsequences": "The original remains in Magda's desk. She will notice it was opened (dust pattern disturbed). The copy gives the protagonist evidence but also a ticking clock — Magda now knows someone looked." }
 ]`
 
-const DEFAULT_AUTHOR_NOTES = `- "B's voice cracks on [specific word] when it's about A — use ONCE per major arc maximum. Devastating because rare."
-- "A's happiness = [positive sensory]. NEVER reverse this. The tell is the ABSENCE of the unusual effect."
-- "Authority's monotone BREAKING is a seismic event. If their voice changes register, every character in earshot should react. Don't waste it on mid-tier moments."
-- "POV metaphor systems: A = [domain]/[domain]. B = [domain]/[domain]. Authority = [domain]/[domain]. Do NOT cross-contaminate between characters."`
+const DEFAULT_AUTHOR_NOTES = `- "Magda's politeness is a weapon — the more polite she gets, the more dangerous the conversation. Reserve genuine rudeness for moments of vulnerability, not anger."
+- "Yusuf's nervous laugh should appear exactly twice per scene maximum. More than that and it becomes a tic instead of a tell."
+- "Night scenes use sound-first description (what characters hear before what they see). Day scenes use light-first. Don't cross these sensory priorities."
+- "POV metaphor lanes: Protagonist = architectural (foundations, load-bearing, structural). Magda = textile (threads, weaving, unraveling). Keep these distinct."`
 
 // ─── Whiteboard Update Prompt ────────────────────────────────────────────────
 
