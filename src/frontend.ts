@@ -754,6 +754,7 @@ export function setup(ctx: SpindleFrontendContext) {
       updaterConnectionId?: string
       compactionThreshold: number
       auditIntervalMessages: number
+      updaterTemperature?: number
     }
 
     const container = document.createElement('div')
@@ -892,6 +893,43 @@ export function setup(ctx: SpindleFrontendContext) {
       cfg.updaterConnectionId ?? '',
       (val) => saveField('updaterConnectionId', val || undefined)
     ))
+
+    // Updater temperature slider
+    const tempField = document.createElement('div')
+    tempField.className = 'novelist-field'
+
+    const tempLabelDiv = document.createElement('div')
+    tempLabelDiv.className = 'novelist-field-label'
+    tempLabelDiv.innerHTML = `Updater Temperature<div class="novelist-field-desc">Controls creativity vs precision for the sidecar updater (0.0–1.0). Lower = more precise JSON, higher = richer narrative entries.</div>`
+
+    const tempControls = document.createElement('div')
+    tempControls.style.cssText = 'display: flex; align-items: center; gap: 8px;'
+
+    const tempSlider = document.createElement('input')
+    tempSlider.type = 'range'
+    tempSlider.min = '0'
+    tempSlider.max = '100'
+    tempSlider.value = String(Math.round((cfg.updaterTemperature ?? 0.3) * 100))
+    tempSlider.style.cssText = 'width: 100px; cursor: pointer;'
+
+    const tempValue = document.createElement('span')
+    tempValue.style.cssText = 'font-size: 13px; font-weight: 600; min-width: 32px; text-align: right;'
+    tempValue.textContent = (cfg.updaterTemperature ?? 0.3).toFixed(2)
+
+    tempSlider.oninput = () => {
+      const val = parseInt(tempSlider.value, 10) / 100
+      tempValue.textContent = val.toFixed(2)
+    }
+    tempSlider.onchange = () => {
+      const val = parseInt(tempSlider.value, 10) / 100
+      saveField('updaterTemperature', val)
+    }
+
+    tempControls.appendChild(tempSlider)
+    tempControls.appendChild(tempValue)
+    tempField.appendChild(tempLabelDiv)
+    tempField.appendChild(tempControls)
+    modelSection.appendChild(tempField)
 
     container.appendChild(modelSection)
 

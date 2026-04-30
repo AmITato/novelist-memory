@@ -127,6 +127,7 @@ export interface NovelistConfig {
   snapshotRetentionMessages: number
   snapshotRetentionAllSwipes: number
   includeCharacterContext: boolean
+  updaterTemperature: number
 }
 
 // ─── Calibration Bank Types ─────────────────────────────────────────────────

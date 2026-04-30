@@ -119,7 +119,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
-      parameters: { temperature: 0.3, max_tokens: 4000 },
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
     }
     if (connectionId) genRequest.connection_id = connectionId
     if (userId) genRequest.userId = userId
