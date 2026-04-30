@@ -1,9 +1,10 @@
-import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingUpdate, saveWhiteboard, createEmptyWhiteboard } from './whiteboard'
+import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingUpdate, saveWhiteboard, createEmptyWhiteboard, applyDelta, savePendingUpdate } from './whiteboard'
 import { queryIntern, formatInternResults } from './intern'
 import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
 import { getArchiveStats, getArchivedMessagesByRange } from './archive'
-import type { NovelistConfig, Whiteboard } from './types'
+import { createSnapshot, getSnapshotForSwipe, getPreMessageState, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
+import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate } from './types'
 import type { ToolInvocationPayloadDTO } from 'lumiverse-spindle-types'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
@@ -16,11 +17,17 @@ spindle.log.info('Novelist Memory starting...')
 await spindle.storage.mkdir('whiteboards')
 await spindle.storage.mkdir('archives')
 await spindle.storage.mkdir('pending')
+await spindle.storage.mkdir('snapshots')
+await spindle.storage.mkdir('calibration')
 
 // ─── Active Generation State ────────────────────────────────────────────────
 // Track the chatId of the current generation so tool handlers can access it
 // without relying on getActive() (which needs userId for operator-scoped extensions).
 let activeGenerationChatId: string | null = null
+let activeGenerationMessageId: string | null = null
+let activeGenerationIsRegen: boolean = false
+let activeGenerationType: string | null = null
+let pendingDirectDeltas: WhiteboardDelta[] = []
 
 // ─── Context Handler (Pre-Assembly) ─────────────────────────────────────────
 // Seeds the Whiteboard data into the generation context BEFORE prompt assembly.
@@ -159,6 +166,132 @@ spindle.registerTool({
   inline_available: true,
 })
 
+spindle.registerTool({
+  name: 'update_whiteboard',
+  display_name: 'Update Whiteboard',
+  description: 'Directly edit the narrative whiteboard. Use this when you notice something important has changed mid-scene — a relationship shift, a thread resolving, a new plot seed, a continuity detail worth tracking — and you want to record it NOW rather than waiting for the post-generation updater. Pass a delta object with only the sections you want to change. Sections: chronicle (scene beats), threads (narrative arcs), hearts (relationships), palette (voice/style), canon (timeline/events), authorNotes (self-coaching). For chronicle/threads/hearts, use "add" for new entries (with id prefixes chr_, thr_, hrt_) and "update" for modifying existing entries by id.',
+  parameters: {
+    type: 'object',
+    properties: {
+      chronicle: {
+        type: 'object',
+        description: 'Add or update Chronicle entries (scene-level narrative beats).',
+        properties: {
+          add: {
+            type: 'array',
+            description: 'New chronicle entries to append.',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique ID with chr_ prefix (e.g. chr_rooftop_kiss)' },
+                timestamp: { type: 'string', description: 'In-story timestamp' },
+                location: { type: 'string' },
+                summary: { type: 'string' },
+                charactersPresent: { type: 'array', items: { type: 'string' } },
+                emotionalStates: { type: 'object', additionalProperties: { type: 'string' } },
+                sensoryContext: { type: 'string' },
+                verbatimDialogue: { type: 'array', items: { type: 'string' } },
+                sourceMessageRange: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 },
+              },
+              required: ['id', 'timestamp', 'location', 'summary', 'charactersPresent', 'emotionalStates', 'sensoryContext'],
+            },
+          },
+          update: {
+            type: 'array',
+            description: 'Partial updates to existing chronicle entries (matched by id).',
+            items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          },
+        },
+      },
+      threads: {
+        type: 'object',
+        description: 'Add or update Thread entries (narrative arcs/plot threads).',
+        properties: {
+          add: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique ID with thr_ prefix' },
+                name: { type: 'string' },
+                status: { type: 'string', enum: ['ACTIVE', 'DORMANT', 'SEEDED', 'RESOLVED'] },
+                lastTouched: { type: 'string' },
+                summary: { type: 'string' },
+                dependencies: { type: 'array', items: { type: 'string' } },
+                triggerConditions: { type: 'array', items: { type: 'string' } },
+                downstreamConsequences: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['id', 'name', 'status', 'lastTouched', 'summary'],
+            },
+          },
+          update: {
+            type: 'array',
+            items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          },
+        },
+      },
+      hearts: {
+        type: 'object',
+        description: 'Add or update Heart entries (relationship dynamics).',
+        properties: {
+          add: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique ID with hrt_ prefix' },
+                from: { type: 'string' },
+                to: { type: 'string' },
+                status: { type: 'string' },
+                keyKnowledge: { type: 'array', items: { type: 'string' } },
+                processing: { type: 'string' },
+                sensoryMemories: { type: 'array', items: { type: 'string' } },
+                unresolved: { type: 'array', items: { type: 'string' } },
+                nextBeat: { type: 'string' },
+              },
+              required: ['id', 'from', 'to', 'status'],
+            },
+          },
+          update: {
+            type: 'array',
+            items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          },
+        },
+      },
+      palette: {
+        type: 'object',
+        description: 'Merge updates into the Palette (voice/style/sensory tracking). Keys are shallow-merged.',
+        properties: {
+          formattingAssignments: { type: 'object', additionalProperties: { type: 'string' } },
+          voiceNotes: { type: 'object', additionalProperties: { type: 'string' } },
+          sensorySignatures: { type: 'object', additionalProperties: { type: 'string' } },
+          fragileDetails: { type: 'array', items: { type: 'string' }, description: 'New fragile details to append.' },
+        },
+      },
+      canon: {
+        type: 'object',
+        description: 'Update Canon (timeline, events, butterfly log). completedEvents and butterflyLog append; upcomingEvents replaces.',
+        properties: {
+          timelinePosition: { type: 'string' },
+          completedEvents: { type: 'array', items: { type: 'object', properties: { event: { type: 'string' }, deviations: { type: 'string' }, foreshadowingNeeded: { type: 'string' } }, required: ['event'] } },
+          upcomingEvents: { type: 'array', items: { type: 'object', properties: { event: { type: 'string' }, deviations: { type: 'string' }, foreshadowingNeeded: { type: 'string' } }, required: ['event'] } },
+          butterflyLog: { type: 'array', items: { type: 'object', properties: { change: { type: 'string' }, projectedConsequences: { type: 'string' } }, required: ['change', 'projectedConsequences'] } },
+        },
+      },
+      authorNotes: {
+        type: 'object',
+        description: 'Add or remove Author Notes (model-to-self coaching).',
+        properties: {
+          add: { type: 'array', items: { type: 'string' }, description: 'New notes to append.' },
+          remove: { type: 'array', items: { type: 'number' }, description: 'Indices of notes to remove (0-based).' },
+        },
+      },
+    },
+  },
+  council_eligible: true,
+  inline_available: true,
+})
+
 // Handle tool invocations
 const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): Promise<string | void> => {
   if (payload.toolName === 'random_number') {
@@ -166,6 +299,66 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
     const max = (payload.args.max as number) ?? 100
     const result = Math.floor(Math.random() * (max - min + 1)) + min
     return `🎲 ${result}`
+  }
+
+  if (payload.toolName === 'update_whiteboard') {
+    const chatId = activeGenerationChatId
+    if (!chatId) return 'Unable to determine the active chat. The context handler may not have fired yet.'
+
+    const delta = payload.args as unknown as WhiteboardDelta
+    if (!delta || typeof delta !== 'object') return 'Invalid delta: expected a WhiteboardDelta object.'
+
+    const config = await getConfig()
+
+    if (config.directEditRequiresReview) {
+      const updateId = `upd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const pending: PendingUpdate = {
+        id: updateId,
+        chatId,
+        timestamp: new Date().toISOString(),
+        changes: delta,
+        status: 'pending',
+        autoCommitAt: config.autoCommitUpdates ? Date.now() + config.updateReviewWindowMs : undefined,
+      }
+      await savePendingUpdate(pending)
+      pendingDirectDeltas.push(structuredClone(delta))
+      spindle.sendToFrontend({ type: 'pending_update', data: { chatId, update: pending } })
+      spindle.log.info(`[NovelistMemory] Direct edit queued as pending update ${updateId} (review required)`)
+
+      const sections = [
+        delta.chronicle ? `chronicle (${(delta.chronicle.add?.length ?? 0)} added, ${(delta.chronicle.update?.length ?? 0)} updated)` : null,
+        delta.threads ? `threads (${(delta.threads.add?.length ?? 0)} added, ${(delta.threads.update?.length ?? 0)} updated)` : null,
+        delta.hearts ? `hearts (${(delta.hearts.add?.length ?? 0)} added, ${(delta.hearts.update?.length ?? 0)} updated)` : null,
+        delta.palette ? 'palette' : null,
+        delta.canon ? 'canon' : null,
+        delta.authorNotes ? 'authorNotes' : null,
+      ].filter(Boolean).join(', ')
+
+      return `Whiteboard update queued for review (${updateId}). Sections: ${sections}. It will ${config.autoCommitUpdates ? `auto-commit in ${config.updateReviewWindowMs / 1000}s unless the user intervenes` : 'wait for manual commit'}.`
+    }
+
+    const whiteboard = await getWhiteboard(chatId)
+    const updated = applyDelta(whiteboard, delta)
+    await saveWhiteboard(updated)
+
+    pendingDirectDeltas.push(structuredClone(delta))
+
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: updated } })
+
+    await refreshMacros(chatId)
+
+    spindle.log.info(`[NovelistMemory] Direct whiteboard edit applied for chat ${chatId}`)
+
+    const sections = [
+      delta.chronicle ? `chronicle (${(delta.chronicle.add?.length ?? 0)} added, ${(delta.chronicle.update?.length ?? 0)} updated)` : null,
+      delta.threads ? `threads (${(delta.threads.add?.length ?? 0)} added, ${(delta.threads.update?.length ?? 0)} updated)` : null,
+      delta.hearts ? `hearts (${(delta.hearts.add?.length ?? 0)} added, ${(delta.hearts.update?.length ?? 0)} updated)` : null,
+      delta.palette ? 'palette' : null,
+      delta.canon ? 'canon' : null,
+      delta.authorNotes ? 'authorNotes' : null,
+    ].filter(Boolean).join(', ')
+
+    return `Whiteboard updated. Sections changed: ${sections}.`
   }
 
   if (payload.toolName !== 'recall_scene' && payload.toolName !== 'recall_by_range') return
@@ -233,11 +426,54 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
 // ─── Generation Lifecycle Events ────────────────────────────────────────────
 
-;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
+spindle.on('GENERATION_STARTED', async (payload) => {
+  activeGenerationMessageId = payload.targetMessageId ?? null
+  activeGenerationIsRegen = !!payload.targetMessageId
+  activeGenerationType = (payload as { generationType?: string }).generationType ?? null
+  pendingDirectDeltas = []
+
+  if (activeGenerationType === 'impersonate') return
+
+  if (!activeGenerationIsRegen) return
+
+  const chatId = payload.chatId
+  if (!chatId) return
+
   const config = await getConfig()
   if (!config.enabled) return
 
-  const p = payload as { messageId?: string, chatId?: string, content?: string }
+  const preState = await getPreMessageState(chatId, payload.targetMessageId!)
+  if (preState) {
+    const rewound = structuredClone(preState)
+    rewound.chatId = chatId
+    await saveWhiteboard(rewound)
+    await removeSnapshotsForMessage(chatId, payload.targetMessageId!)
+    spindle.log.info(`[NovelistMemory] Regen rewind: restored pre-message state for ${payload.targetMessageId}`)
+
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } })
+    await refreshMacros(chatId)
+  } else {
+    spindle.log.info(`[NovelistMemory] Regen rewind: no prior snapshot found for ${payload.targetMessageId}, whiteboard unchanged`)
+  }
+})
+
+;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
+  const p = payload as { messageId?: string, chatId?: string, content?: string, generationType?: string }
+
+  const genType = p.generationType ?? activeGenerationType
+
+  if (genType === 'impersonate') {
+    spindle.log.info(`[NovelistMemory] Skipping updater for impersonate generation`)
+    activeGenerationMessageId = null
+    activeGenerationIsRegen = false
+    activeGenerationType = null
+    pendingDirectDeltas = []
+    return
+  }
+
+  const config = await getConfig()
+  if (!config.enabled) return
+
   let chatId = p.chatId
   if (!chatId) {
     try {
@@ -250,9 +486,98 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
   spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
 
-  processGenerationEnd(chatId, p.messageId, userId).catch(err => {
+  try {
+    await processGenerationEnd(chatId, p.messageId, userId)
+  } catch (err) {
     spindle.log.error(`[NovelistMemory] Background processing failed: ${err}`)
-  })
+  }
+
+  try {
+    const messageId = p.messageId ?? activeGenerationMessageId
+    if (messageId) {
+      const messages = await spindle.chat.getMessages(chatId)
+      const msgIndex = messages.findIndex((m: { id: string }) => m.id === messageId)
+      const msg = msgIndex >= 0 ? messages[msgIndex] as { id: string, swipe_id: number } : null
+
+      if (msg) {
+        const finalState = await getWhiteboard(chatId)
+        const allDeltas = [...pendingDirectDeltas]
+        const source = allDeltas.length > 0 ? 'combined' as const : 'updater' as const
+        await createSnapshot(chatId, messageId, msg.swipe_id, msgIndex, finalState, allDeltas, source)
+        await pruneSnapshots(chatId)
+      }
+    }
+  } catch (err) {
+    spindle.log.error(`[NovelistMemory] Snapshot creation failed: ${err}`)
+  }
+
+  activeGenerationMessageId = null
+  activeGenerationIsRegen = false
+  activeGenerationType = null
+  pendingDirectDeltas = []
+})
+
+// ─── Swipe Navigation ───────────────────────────────────────────────────────
+
+spindle.on('MESSAGE_SWIPED', async (payload) => {
+  const config = await getConfig()
+  if (!config.enabled) return
+
+  if (payload.action !== 'navigated') return
+
+  const chatId = payload.chatId
+  const messageId = payload.message.id
+  const targetSwipeId = payload.swipeId
+
+  const snapshot = await getSnapshotForSwipe(chatId, messageId, targetSwipeId)
+  if (snapshot) {
+    const restored = structuredClone(snapshot.state)
+    restored.chatId = chatId
+    await saveWhiteboard(restored)
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: restored } })
+    await refreshMacros(chatId)
+    spindle.log.info(`[NovelistMemory] Swipe nav: restored snapshot ${snapshot.id} for ${messageId} swipe ${targetSwipeId}`)
+  } else {
+    spindle.log.info(`[NovelistMemory] Swipe nav: no snapshot found for ${messageId} swipe ${targetSwipeId}, whiteboard unchanged`)
+  }
+})
+
+// ─── Fork Seeding ───────────────────────────────────────────────────────────
+
+;(spindle.on as Function)('CHAT_SWITCHED', async (payload: { chatId: string | null }) => {
+  if (!payload.chatId) return
+
+  const config = await getConfig()
+  if (!config.enabled) return
+
+  const newChatId = payload.chatId
+
+  try {
+    const chat = await spindle.chats.get(newChatId)
+    if (!chat) return
+
+    const parentChatId = chat.metadata.branched_from as string | undefined
+    const forkMessageId = chat.metadata.branch_at_message as string | undefined
+    if (!parentChatId || !forkMessageId) return
+
+    const wb = await getWhiteboard(newChatId)
+    const isEmpty = wb.chronicle.length === 0
+      && wb.threads.length === 0
+      && wb.hearts.length === 0
+      && wb.authorNotes.length === 0
+      && !wb.canon.timelinePosition
+      && Object.keys(wb.palette.voiceNotes).length === 0
+
+    if (!isEmpty) return
+
+    const seeded = await seedFromParent(newChatId, parentChatId, forkMessageId)
+    if (seeded) {
+      spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId: newChatId, whiteboard: seeded } })
+      await refreshMacros(newChatId)
+    }
+  } catch (err) {
+    spindle.log.error(`[NovelistMemory] Fork seeding failed for ${newChatId}: ${err}`)
+  }
 })
 
 // ─── Frontend Message Handling ──────────────────────────────────────────────

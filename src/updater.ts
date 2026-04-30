@@ -1,5 +1,5 @@
 import type { WhiteboardDelta, PendingUpdate, ArchivedMessage } from './types'
-import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates } from './whiteboard'
+import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates, getCalibrationBank } from './whiteboard'
 import { archiveMessages, getArchive } from './archive'
 import { getConfig, resolveBackgroundConnectionId } from './config'
 import { buildUpdatePrompt, buildArchiveMetadataPrompt } from './prompts'
@@ -68,12 +68,15 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
       ? [Math.min(userIndex, assistantIndex), Math.max(userIndex, assistantIndex)]
       : undefined
 
+  const calibrationBank = await getCalibrationBank(chatId)
+
   const updatePrompt = buildUpdatePrompt(
     whiteboard,
     lastUser.content,
     lastAssistant.content,
     recentContext,
-    messageRange
+    messageRange,
+    calibrationBank
   )
 
   const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)

@@ -13,6 +13,9 @@ const DEFAULT_CONFIG: NovelistConfig = {
   useSidecar: true,
   compactionThreshold: 100,
   auditIntervalMessages: 40,
+  directEditRequiresReview: false,
+  snapshotRetentionMessages: 10,
+  snapshotRetentionAllSwipes: 1,
 }
 
 /**

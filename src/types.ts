@@ -123,6 +123,21 @@ export interface NovelistConfig {
   updaterConnectionId?: string
   compactionThreshold: number
   auditIntervalMessages: number
+  directEditRequiresReview: boolean
+  snapshotRetentionMessages: number
+  snapshotRetentionAllSwipes: number
+}
+
+// ─── Calibration Bank Types ─────────────────────────────────────────────────
+
+export interface CalibrationBank {
+  chatId: string
+  chronicle?: string[]
+  threads?: string[]
+  hearts?: string[]
+  palette?: string[]
+  canon?: string[]
+  authorNotes?: string[]
 }
 
 // ─── Update Types ────────────────────────────────────────────────────────────
@@ -144,4 +159,18 @@ export interface WhiteboardDelta {
   palette?: Partial<PaletteSection>
   canon?: Partial<CanonSection>
   authorNotes?: { add?: string[], remove?: number[] }
+}
+
+// ─── Snapshot Types ─────────────────────────────────────────────────────────
+
+export interface WhiteboardSnapshot {
+  id: string
+  chatId: string
+  messageId: string
+  swipeId: number
+  messageIndex: number
+  state: Whiteboard
+  deltas: WhiteboardDelta[]
+  source: 'updater' | 'direct_edit' | 'combined'
+  timestamp: string
 }

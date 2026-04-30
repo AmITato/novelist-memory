@@ -1,4 +1,4 @@
-import type { Whiteboard, WhiteboardDelta, PendingUpdate, ChronicleEntry, ThreadEntry, HeartEntry } from './types'
+import type { Whiteboard, WhiteboardDelta, PendingUpdate, ChronicleEntry, ThreadEntry, HeartEntry, CalibrationBank } from './types'
 import { getConfig } from './config'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
@@ -50,6 +50,23 @@ export async function getWhiteboard(chatId: string): Promise<Whiteboard> {
 export async function saveWhiteboard(whiteboard: Whiteboard): Promise<void> {
   whiteboard.lastUpdated = new Date().toISOString()
   await spindle.storage.setJson(whiteboardPath(whiteboard.chatId), whiteboard, { indent: 2 })
+}
+
+// ─── Calibration Bank ───────────────────────────────────────────────────────
+
+function calibrationPath(chatId: string): string {
+  return `calibration/${chatId}.json`
+}
+
+export async function getCalibrationBank(chatId: string): Promise<CalibrationBank> {
+  const path = calibrationPath(chatId)
+  const exists = await spindle.storage.exists(path)
+  if (!exists) return { chatId }
+  return spindle.storage.getJson<CalibrationBank>(path, { fallback: { chatId } })
+}
+
+export async function saveCalibrationBank(bank: CalibrationBank): Promise<void> {
+  await spindle.storage.setJson(calibrationPath(bank.chatId), bank, { indent: 2 })
 }
 
 // ─── Delta Application ──────────────────────────────────────────────────────
