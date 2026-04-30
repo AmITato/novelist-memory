@@ -202,6 +202,15 @@ Settings save immediately on change (no save button needed). Green "✓ Settings
 2. **userId passed as second arg instead of request field** — `quiet(request, userId)` is wrong. `quiet({ ...request, userId })` is correct. The worker runtime spreads the input and the host reads `input.userId`.
 3. **Edit JSON button doubling entries** — `commitPendingUpdate()` didn't check if the update was already committed. Both `autoCommitDueUpdates()` and the `setTimeout` callback could fire for the same update, applying the delta twice. Fixed with `if (update.status === 'committed') return`.
 4. **Edit button was a no-op** — Just re-fetched data without opening an editor. Replaced with inline JSON textarea editor with save/cancel.
+5. **recall_by_range returning empty for non-archived messages** — Only looked in the archive, which is empty for new chats or messages within the sliding window. Added fallback to `spindle.chat.getMessages()` for direct chat history access regardless of whiteboard/archival state.
+6. **GENERATION_ENDED firing when whiteboard disabled** — The event handler was running the full updater pipeline even with `config.enabled = false`. Moved the `config.enabled` check to the very top of the handler, before any other work.
+7. **Tool invocations failing with "can't determine active chat"** — `invokeExtensionTool` strips `userId` from args (security) and doesn't pass it in the `tool_invocation` message. The `TOOL_INVOCATION` handler only receives `(payload)` — no userId second arg. This made `spindle.chats.getActive()` fail for operator-scoped extensions. Fixed by capturing `activeGenerationChatId` in the context handler (fires before prompt assembly, before tools execute) and reading it in the tool handler. No `getActive()` call needed.
+
+## Important: tool invocation has no userId
+
+`invokeExtensionTool` in `worker-host.ts` deliberately strips `userId`, `__userId`, and `__user_id` from the tool args for security. The `tool_invocation` message sent to the worker carries no userId field. The worker runtime calls `handler(payload)` with only ONE argument — there is no `(payload, userId)` catch-all for tool invocations like there is for events.
+
+**Consequence:** Tool handlers cannot call APIs that require userId (like `spindle.chats.getActive()` on operator-scoped extensions). Use the context handler to capture state before tools execute.
 
 ## Not yet implemented
 
