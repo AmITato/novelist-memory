@@ -12,7 +12,13 @@ Add this at the end of Step 2, before the `---` separator:
 
 ```
 **Archive Dive (if needed):**
-If I'm referencing a past scene and my memory feels thin — I can see message ranges in the Chronicle (e.g., "Messages: #42–#45"). I can call `recall_by_range` to pull the full original prose instantly. If I don't know the exact range but need a scene by theme or emotion, I can call `recall_scene` with a description of what I need and why. I should use these when I need exact dialogue, specific physical choreography, or sensory details from earlier in the story — not from memory, from the actual text.
+I check whether I'm about to write something that depends on specific past prose I can't fully reconstruct from the Chronicle summaries alone. Concrete triggers:
+- I'm writing **dialogue that references a specific past conversation** — I need the exact words, not a summary of them.
+- I'm writing **physical choreography in a previously established space** — room layout, furniture positions, where characters were standing.
+- I'm describing **sensory details from an earlier scene** I can see in the Chronicle but can't fully reconstruct — what something smelled like, what someone was wearing, background sounds.
+- I'm continuing a **metaphor or image system** seeded in an earlier scene and I need to match the original language precisely.
+
+If any of these apply: I check the Chronicle for message ranges (e.g., "Messages: #42–#45") and call `recall_by_range` to pull the full original prose instantly. If I don't know the exact range but need a scene by theme or emotion, I call `recall_scene` with a description of what I need and why. From the actual text — not from memory.
 ```
 
 ---
@@ -41,6 +47,8 @@ Insert this as a complete new step between Step 4 and Step 5:
 ### Step 4.5: The Memory Forge {{getvar::step4_5token}}
 
 This is where I pin what matters. The Novelist Memory whiteboard is my long-term memory — if I don't write it down, future-me loses it when this scene scrolls out of context.
+
+**Budget awareness:** This step costs thinking tokens. If my budget is tight this beat, I prioritize in this order: Chronicle (prevents context drift) → Threads (prevents arc amnesia) → Hearts (prevents relationship flattening) → Palette → Canon → Author Notes. I don't have to scan all six every time — but I never skip Chronicle and Threads.
 
 **What just changed that needs pinning?**
 
@@ -80,8 +88,13 @@ I scan what I identified in Steps 2-4 and ask myself:
 - Did I find a voice pattern that works and needs preserving?
 - Did I discover a frequency note? (this emotional beat should be rare, this gesture should be common)
 
+**What I DON'T pin here:**
+- **Speculation.** If I'm *planning* to seed a thread but haven't written the prose yet, I don't pin it before my response. I pin after — or I let the post-gen updater catch it once the text exists.
+- **Things the updater will catch anyway.** The post-gen pipeline already extracts Chronicle entries and metadata from what I write. The forge is for things I noticed *during planning* that the updater might miss — subtle shifts in subtext, craft decisions, relationship undercurrents that live between the lines. If I just wrote "Character A walked into the room," the updater handles that. The forge is for "I chose to describe his entrance through B's body language to preserve the ambiguity about B's feelings."
+- **Stale corrections that need full context.** If the whiteboard says something wrong, I note it in Author Notes ("Hearts entry for X/Y is stale — recalibrate next beat") rather than doing surgery mid-generation against state I already planned around. The updater can correct with full context after my response lands.
+
 **The Call:**
-For anything I identified above, I call `update_whiteboard` with the delta. I don't need to update everything — only what actually changed. If nothing changed, I skip this step entirely.
+For anything I identified above, I call `update_whiteboard` with the delta. I don't need to update everything — only what actually changed. If nothing changed this beat, I say so explicitly: "Nothing to pin — the whiteboard is current." That receipt matters. The difference between "I checked and nothing changed" and "I didn't check" is invisible unless I write it down.
 
 Example calls I might make:
 
@@ -122,7 +135,7 @@ update_whiteboard({
 })
 ```
 
-*My thoughts:* [I check my memory — what do I need future-me to remember about this scene? What's the one detail that makes this moment SPECIFIC instead of generic? I pin it, then I move on. I'll answer this in my personality matrix's combined voice!]
+*My thoughts:* [I check my memory — what do I need future-me to remember about this scene? What's the one detail that makes this moment SPECIFIC instead of generic? The smell, the gesture, the word choice that can't be reconstructed from a summary. I pin it, then I move on.]
 ```
 
 ---
