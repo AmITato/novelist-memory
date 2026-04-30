@@ -228,8 +228,10 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 // ─── Generation Lifecycle Events ────────────────────────────────────────────
 
 ;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
+  const config = await getConfig()
+  if (!config.enabled) return
+
   const p = payload as { messageId?: string, chatId?: string, content?: string }
-  // Determine chat ID
   let chatId = p.chatId
   if (!chatId) {
     try {
@@ -242,7 +244,6 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
   spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
 
-  // Process in the background — don't block the generation lifecycle
   processGenerationEnd(chatId, p.messageId, userId).catch(err => {
     spindle.log.error(`[NovelistMemory] Background processing failed: ${err}`)
   })
