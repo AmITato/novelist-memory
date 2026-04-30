@@ -164,6 +164,18 @@ export interface WhiteboardDelta {
   authorNotes?: { add?: string[], remove?: number[] }
 }
 
+// ─── History Types ──────────────────────────────────────────────────────────
+
+export interface DirectEditEntry {
+  id: string
+  chatId: string
+  timestamp: string
+  delta: WhiteboardDelta
+  summary: string
+  /** The messageId of the generation that was in-flight when the tool was called */
+  generationMessageId?: string
+}
+
 // ─── Snapshot Types ─────────────────────────────────────────────────────────
 
 export interface WhiteboardSnapshot {

@@ -33,6 +33,15 @@ interface RecallResult {
   tokenCount: number
 }
 
+interface DirectEditEntry {
+  id: string
+  chatId: string
+  timestamp: string
+  delta: Record<string, unknown>
+  summary: string
+  generationMessageId?: string
+}
+
 export function setup(ctx: SpindleFrontendContext) {
   // ─── Styles ─────────────────────────────────────────────────────────────
 
@@ -300,6 +309,69 @@ export function setup(ctx: SpindleFrontendContext) {
       text-align: center;
       margin-bottom: 12px;
     }
+
+    .novelist-history-entry {
+      padding: 12px;
+      margin-bottom: 8px;
+      background: var(--lumiverse-fill);
+      border-radius: var(--lumiverse-radius);
+      border-left: 3px solid var(--lumiverse-accent);
+      transition: border-color 0.2s;
+    }
+
+    .novelist-history-entry:hover {
+      border-left-color: #e5c07b;
+    }
+
+    .novelist-history-entry.novelist-history-new {
+      animation: novelist-flash 1.5s ease-out;
+    }
+
+    @keyframes novelist-flash {
+      0% { background: rgba(76, 175, 80, 0.15); border-left-color: #4caf50; }
+      100% { background: var(--lumiverse-fill); border-left-color: var(--lumiverse-accent); }
+    }
+
+    .novelist-history-time {
+      font-size: 11px;
+      color: var(--lumiverse-text-muted, #888);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .novelist-history-summary {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--lumiverse-text);
+    }
+
+    .novelist-history-delta {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--lumiverse-bg);
+      border-radius: calc(var(--lumiverse-radius) - 2px);
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .novelist-history-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(156, 39, 176, 0.2);
+      color: #ce93d8;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
   `)
 
   // ─── State ──────────────────────────────────────────────────────────────
@@ -313,6 +385,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let currentConfig: Record<string, unknown> | null = null
   let whiteboardTokenInfo: { tokens: number, approximate: boolean, tokenizer: string, budget: number } | null = null
   let availableConnections: Array<{ id: string, name: string, provider: string, model: string }> | null = null
+  let directEditHistory: DirectEditEntry[] = []
 
   // ─── Detect Active Chat on Load ──────────────────────────────────────
 
@@ -346,6 +419,7 @@ export function setup(ctx: SpindleFrontendContext) {
       recallResults = []
       archiveStats = null
       whiteboardTokenInfo = null
+      directEditHistory = []
       ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: chat.chatId } })
     }
     renderDrawer()
@@ -370,7 +444,7 @@ export function setup(ctx: SpindleFrontendContext) {
     }
 
     // Tab bar
-    const tabs = ['Whiteboard', 'Recall', 'Archive', 'Settings']
+    const tabs = ['Whiteboard', 'History', 'Recall', 'Archive', 'Settings']
     const activeTab = (drawerContainer.dataset.activeTab ?? 'Whiteboard') as string
 
     const tabBar = document.createElement('div')
@@ -431,6 +505,7 @@ export function setup(ctx: SpindleFrontendContext) {
     // Tab content
     switch (activeTab) {
       case 'Whiteboard': renderWhiteboardTab(root); break
+      case 'History': renderHistoryTab(root); break
       case 'Recall': renderRecallTab(root); break
       case 'Archive': renderArchiveTab(root); break
       case 'Settings': renderSettingsTab(root); break
@@ -609,6 +684,77 @@ export function setup(ctx: SpindleFrontendContext) {
       editBtn.replaceWith(editorContainer)
     }
     root.appendChild(editBtn)
+  }
+
+  function renderHistoryTab(root: HTMLElement) {
+    // Request history if we haven't loaded it yet for this chat
+    if (directEditHistory.length === 0 && currentChatId) {
+      ctx.sendToBackend({ type: 'get_update_history', data: { chatId: currentChatId } })
+    }
+
+    if (directEditHistory.length === 0) {
+      root.innerHTML += '<div class="novelist-empty">No direct edits yet.<br><br>When Lumia calls <code>update_whiteboard</code> during generation, her changes will appear here in real time.</div>'
+      return
+    }
+
+    const container = document.createElement('div')
+
+    const header = document.createElement('div')
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;'
+    header.innerHTML = `
+      <div style="font-size: 13px; font-weight: 600; color: var(--lumiverse-accent);">Lumia's Direct Edits</div>
+      <div style="font-size: 11px; color: var(--lumiverse-text-muted, #888);">${directEditHistory.length} edit${directEditHistory.length !== 1 ? 's' : ''}</div>
+    `
+    container.appendChild(header)
+
+    // Show most recent first
+    const sorted = [...directEditHistory].reverse()
+
+    for (const entry of sorted) {
+      const el = document.createElement('div')
+      el.className = 'novelist-history-entry'
+
+      // Time formatting
+      const date = new Date(entry.timestamp)
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      const isToday = new Date().toDateString() === date.toDateString()
+      const displayTime = isToday ? timeStr : `${dateStr} ${timeStr}`
+
+      // Count sections touched for the badge
+      const delta = entry.delta as Record<string, unknown>
+      const sectionCount = ['chronicle', 'threads', 'hearts', 'palette', 'canon', 'authorNotes']
+        .filter(k => delta[k] != null).length
+
+      el.innerHTML = `
+        <div class="novelist-history-time">
+          <span class="novelist-history-badge">tool call</span>
+          <span>${displayTime}</span>
+          <span>·</span>
+          <span>${sectionCount} section${sectionCount !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="novelist-history-summary">${escapeHtml(entry.summary)}</div>
+      `
+
+      // Expandable delta detail
+      const detailsEl = document.createElement('details')
+      detailsEl.style.marginTop = '6px'
+
+      const summaryEl = document.createElement('summary')
+      summaryEl.style.cssText = 'cursor: pointer; font-size: 11px; color: var(--lumiverse-accent); user-select: none;'
+      summaryEl.textContent = 'Show raw delta'
+      detailsEl.appendChild(summaryEl)
+
+      const deltaContent = document.createElement('div')
+      deltaContent.className = 'novelist-history-delta'
+      deltaContent.textContent = JSON.stringify(entry.delta, null, 2)
+      detailsEl.appendChild(deltaContent)
+
+      el.appendChild(detailsEl)
+      container.appendChild(el)
+    }
+
+    root.appendChild(container)
   }
 
   function renderRecallTab(root: HTMLElement) {
@@ -1180,6 +1326,24 @@ export function setup(ctx: SpindleFrontendContext) {
         break
       }
 
+      case 'direct_edit': {
+        const data = payload.data as { chatId: string, entry: DirectEditEntry }
+        if (data.chatId === currentChatId) {
+          directEditHistory.push(data.entry)
+          renderDrawer()
+        }
+        break
+      }
+
+      case 'update_history': {
+        const data = payload.data as { chatId: string, entries: DirectEditEntry[] }
+        if (data.chatId === currentChatId) {
+          directEditHistory = data.entries
+          renderDrawer()
+        }
+        break
+      }
+
       case 'pending_update': {
         const data = payload.data as unknown as PendingUpdateData
         if (data.chatId === currentChatId) {
@@ -1295,6 +1459,7 @@ export function setup(ctx: SpindleFrontendContext) {
     recallResults = []
     archiveStats = null
     whiteboardTokenInfo = null
+    directEditHistory = []
     if (currentChatId) {
       ctx.sendToBackend({ type: 'get_whiteboard', data: { chatId: currentChatId } })
     }

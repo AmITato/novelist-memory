@@ -5,7 +5,7 @@ import { getConfig, saveConfig, invalidateConfigCache } from './config'
 import { getArchiveStats, getArchivedMessagesByRange, removeArchivedMessage } from './archive'
 import { createSnapshot, getSnapshotForSwipe, getPreMessageState, getLatestSnapshotForMessage, getSnapshots, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
 import { countTokens } from './tokens'
-import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate } from './types'
+import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate, DirectEditEntry } from './types'
 import type { ToolInvocationPayloadDTO } from 'lumiverse-spindle-types'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
@@ -20,6 +20,61 @@ await spindle.storage.mkdir('archives')
 await spindle.storage.mkdir('pending')
 await spindle.storage.mkdir('snapshots')
 await spindle.storage.mkdir('calibration')
+await spindle.storage.mkdir('history')
+
+// ─── Direct Edit History ────────────────────────────────────────────────────
+// Persistent log of every update_whiteboard tool call Lumia makes.
+// Stored per-chat at history/{chatId}.json. Not subject to snapshot pruning.
+
+async function getDirectEditHistory(chatId: string): Promise<DirectEditEntry[]> {
+  const path = `history/${chatId}.json`
+  const exists = await spindle.storage.exists(path)
+  if (!exists) return []
+  return spindle.storage.getJson<DirectEditEntry[]>(path, { fallback: [] })
+}
+
+async function appendDirectEdit(entry: DirectEditEntry): Promise<void> {
+  const history = await getDirectEditHistory(entry.chatId)
+  history.push(entry)
+  await spindle.storage.setJson(`history/${entry.chatId}.json`, history, { indent: 2 })
+}
+
+function summarizeDelta(delta: WhiteboardDelta): string {
+  const parts: string[] = []
+  if (delta.chronicle?.add?.length) parts.push(`+${delta.chronicle.add.length} chronicle`)
+  if (delta.chronicle?.update?.length) parts.push(`~${delta.chronicle.update.length} chronicle`)
+  if (delta.threads?.add?.length) {
+    const names = delta.threads.add.map(t => t.name).filter(Boolean)
+    parts.push(`+${delta.threads.add.length} thread${names.length ? ` (${names.join(', ')})` : ''}`)
+  }
+  if (delta.threads?.update?.length) {
+    const statuses = delta.threads.update.filter(t => t.status).map(t => `${t.id}→${t.status}`)
+    parts.push(`~${delta.threads.update.length} thread${statuses.length ? ` [${statuses.join(', ')}]` : ''}`)
+  }
+  if (delta.hearts?.add?.length) {
+    const pairs = delta.hearts.add.map(h => `${h.from}→${h.to}`)
+    parts.push(`+${delta.hearts.add.length} heart (${pairs.join(', ')})`)
+  }
+  if (delta.hearts?.update?.length) parts.push(`~${delta.hearts.update.length} heart`)
+  if (delta.palette) {
+    const sub: string[] = []
+    if (delta.palette.voiceNotes && Object.keys(delta.palette.voiceNotes).length) sub.push('voice')
+    if (delta.palette.sensorySignatures && Object.keys(delta.palette.sensorySignatures).length) sub.push('sensory')
+    if (delta.palette.fragileDetails?.length) sub.push(`${delta.palette.fragileDetails.length} fragile`)
+    if (delta.palette.formattingAssignments && Object.keys(delta.palette.formattingAssignments).length) sub.push('formatting')
+    parts.push(`palette (${sub.join(', ') || 'merge'})`)
+  }
+  if (delta.canon) {
+    const sub: string[] = []
+    if (delta.canon.timelinePosition) sub.push('timeline')
+    if (delta.canon.completedEvents?.length) sub.push(`+${delta.canon.completedEvents.length} events`)
+    if (delta.canon.butterflyLog?.length) sub.push(`+${delta.canon.butterflyLog.length} butterfly`)
+    parts.push(`canon (${sub.join(', ') || 'update'})`)
+  }
+  if (delta.authorNotes?.add?.length) parts.push(`+${delta.authorNotes.add.length} author note`)
+  if (delta.authorNotes?.remove?.length) parts.push(`-${delta.authorNotes.remove.length} author note`)
+  return parts.join(' · ') || 'empty delta'
+}
 
 // ─── Active Generation State ────────────────────────────────────────────────
 // Track the chatId of the current generation so tool handlers can access it
@@ -328,6 +383,18 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
     if (!delta || typeof delta !== 'object') return 'Invalid delta: expected a WhiteboardDelta object.'
 
     const config = await getConfig()
+
+    // Build a history entry for every direct edit — persisted and sent to frontend
+    const historyEntry: DirectEditEntry = {
+      id: `de_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      chatId,
+      timestamp: new Date().toISOString(),
+      delta: structuredClone(delta),
+      summary: summarizeDelta(delta),
+      generationMessageId: activeGenerationMessageId ?? undefined,
+    }
+    await appendDirectEdit(historyEntry)
+    spindle.sendToFrontend({ type: 'direct_edit', data: { chatId, entry: historyEntry } }, lastKnownUserId ?? undefined)
 
     if (config.directEditRequiresReview) {
       const updateId = `upd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -882,6 +949,14 @@ spindle.onFrontendMessage(async (raw, userId) => {
         spindle.log.error(`[NovelistMemory] Re-run updater failed: ${err}`)
         spindle.sendToFrontend({ type: 'rerun_error', data: { chatId, error: String(err) } }, userId)
       }
+      break
+    }
+
+    case 'get_update_history': {
+      const chatId = payload.data?.chatId as string
+      if (!chatId) return
+      const history = await getDirectEditHistory(chatId)
+      spindle.sendToFrontend({ type: 'update_history', data: { chatId, entries: history } }, userId)
       break
     }
 

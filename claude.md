@@ -537,6 +537,82 @@ System prompts → CoT instructions → [WHITEBOARD HERE] → Chat history → U
 
 The interceptor runs at priority 30 (before most other interceptors).
 
+## Git workflow — CRITICAL
+
+**⚠️ ALWAYS PUSH AFTER EVERY COMMIT. NO EXCEPTIONS. ⚠️**
+
+Lumiverse auto-updates installed extensions from GitHub on restart. If you have local commits that haven't been pushed, Lumiverse will silently pull from origin and **overwrite everything**. We lost a full day of progress to this once. Never again.
+
+The workflow is:
+1. Make changes
+2. Build (`bun run build`)
+3. `git add -A && git commit`
+4. **`git push` immediately** — do not defer, do not "push later," do not close the terminal first
+
+The remote is `origin` → `https://github.com/AmITato/novelist-memory`. Branch is `master`.
+
+If you're an AI assistant working on this codebase: when LO asks you to commit, **always push too** unless he explicitly says not to. The default is push. Assume Lumiverse could restart at any moment.
+
+## History tab (direct edit viewer)
+
+The History tab shows every `update_whiteboard` tool call the primary model (Lumia) makes during generation. It lives between Whiteboard and Recall in the drawer tab bar.
+
+### Data flow
+
+1. Model calls `update_whiteboard` during generation
+2. Backend tool handler (`backend.ts:323+`) creates a `DirectEditEntry` with the delta, a human-readable summary, and timestamp
+3. Entry is persisted to `history/{chatId}.json` via `appendDirectEdit()`
+4. Entry is sent to frontend in real-time via `sendToFrontend({ type: 'direct_edit', ... })`
+5. When the History tab opens, frontend requests full history via `get_update_history` message
+
+### DirectEditEntry type (in types.ts)
+
+```ts
+interface DirectEditEntry {
+  id: string              // "de_{timestamp}_{random6}"
+  chatId: string
+  timestamp: string       // ISO 8601
+  delta: WhiteboardDelta  // the exact delta Lumia sent
+  summary: string         // human-readable summary (e.g. "+1 thread (Name) · +1 heart (A→B)")
+  generationMessageId?: string  // which message was being generated when the tool fired
+}
+```
+
+### Storage
+
+| Directory | Contents |
+|---|---|
+| `history/` | `{chatId}.json` — per-chat direct edit history |
+
+History entries are stored separately from snapshots and are **never pruned**. They're a permanent log of every direct edit Lumia has ever made in a chat.
+
+### Frontend rendering
+
+- Entries shown in reverse chronological order (newest first)
+- Each entry shows: purple `TOOL CALL` badge, timestamp, section count, human-readable summary
+- Expandable `Show raw delta` reveals the full JSON
+- New entries arriving mid-generation get a green flash animation (`novelist-history-new` / `novelist-flash` keyframe)
+- State resets on chat change (history reloaded from backend for the new chat)
+
+### Backend message types
+
+| Frontend → Backend | Backend → Frontend | Description |
+|---|---|---|
+| `get_update_history` | `update_history` | Load full history for a chat |
+| — | `direct_edit` | Real-time notification of a new direct edit |
+
+### Summary generation
+
+`summarizeDelta()` in `backend.ts` produces human-readable summaries from a `WhiteboardDelta`:
+- Chronicles: `+N chronicle` / `~N chronicle`
+- Threads: `+N thread (Name1, Name2)` / `~N thread [id→STATUS]`
+- Hearts: `+N heart (From→To)` / `~N heart`
+- Palette: `palette (voice, sensory, N fragile, formatting)`
+- Canon: `canon (timeline, +N events, +N butterfly)`
+- Author Notes: `+N author note` / `-N author note`
+
+Sections joined with ` · `. Falls back to `empty delta` if nothing changed.
+
 ## Not yet implemented
 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
