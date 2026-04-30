@@ -145,14 +145,19 @@ DO: Flag specific callback-worthy details explicitly in the summary.${sparse.chr
   const threadsGuidance = `THREADS — Narrative arcs and plot threads. THIS IS THE MOST CRITICAL SECTION.
 Every thread MUST have trigger conditions and downstream consequences, or it's just a fact — facts belong in Chronicle or Hearts, not Threads.
 
-Status definitions:
-• SEEDED — Planted in subtext or background. Nobody's noticed yet. Single touchpoint.
-• ACTIVE — At least two touchpoints. Characters or readers are aware something's happening.
+Status definitions (STRICT — read carefully):
+• SEEDED — Single touchpoint. The thread has been mentioned, hinted, or planted ONCE. This is the DEFAULT for new threads. A thread that appears for the first time in this exchange is ALWAYS SEEDED, no matter how important it seems.
+• ACTIVE — TWO OR MORE separate touchpoints across DIFFERENT exchanges. The thread has been mentioned, advanced, or developed in at least two distinct scenes. A thread CANNOT be ACTIVE on its first appearance. Period.
 • DORMANT — Was active, gone quiet. Not resolved, just not in motion.
 • RESOLVED — Concluded. Consequences landed. Keep for reference.
 
+EXAMPLE OF THE SEEDED/ACTIVE DISTINCTION:
+- Message 1 introduces a character's dangerous quirk → thread status: SEEDED (one touchpoint)
+- Message 5, the quirk causes a problem in class → NOW it's ACTIVE (second touchpoint)
+- If you are processing the FIRST message of a chat, ALL new threads are SEEDED. No exceptions.
+
 DON'T: Create a thread for every plot point. Threads need CONSEQUENCES that need tracking.
-DON'T: Mark threads ACTIVE prematurely. Single mention = SEEDED. Needs a second touchpoint to become ACTIVE.
+DON'T: Mark threads ACTIVE on first appearance. First appearance = SEEDED. Always. The importance of a thread does not determine its status — the NUMBER OF TOUCHPOINTS does.
 DON'T: Leave trigger conditions or downstream consequences empty. A thread without triggers is just a note.
 DO: Track subtle foreshadowing seeds. These are the threads most likely to be lost over distance.
 DO: Update dependencies — what other threads or character knowledge does this thread rely on?${sparse.threads ? formatCalibrationExamples('THREADS', calibrationBank?.threads, DEFAULT_THREAD) : ''}`
@@ -163,6 +168,7 @@ Not just "A likes B" — the texture, the processing state, the sensory memories
 Update cadence: Only when the dynamic SHIFTS. Not every exchange. If two characters talk and nothing changes between them, don't update. If one character notices something new about another — even silently — update.
 
 DON'T: Use single-word status descriptors. "Friends" means nothing. "Reluctant allies bonded through shared survival, trust built on observed competence rather than verbal affirmation" means everything.
+DON'T: Flatten complex characters into one mode. If a character is tough publicly but soft privately, the Hearts entry must capture BOTH dimensions — not just the dominant one. Read the character description carefully and reflect its full range.
 DON'T: Update every exchange. Only when the dynamic genuinely shifts.
 DON'T: Forget to track what characters DON'T know about each other. The gap between what A knows about B and what's true is where dramatic irony lives.
 DO: Include sensory memories — physical details from shared moments that would trigger involuntary recall.
@@ -227,6 +233,13 @@ Use this context to write richer, more character-specific whiteboard entries. Ma
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
 
 This whiteboard is the ONLY source of truth once messages scroll out of context. Every detail you track here is a detail preserved. Every detail you miss is lost forever. Be precise. Be specific. Be useful to the writer 200 messages from now.
+
+─── CRITICAL: EVIDENCE BOUNDARY ───
+Record ONLY what is explicitly established in the text. Do NOT extrapolate, infer, or upgrade details beyond what the scene and character descriptions actually state.
+- If the card says "drains heat from surroundings," write "drains heat from surroundings." Do NOT upgrade it to "catastrophic-level event" unless the story text has shown that scale.
+- If a character description says they are soft and affectionate toward someone, record THAT — do not flatten them into "fierce/structural/disciplined" because they are also tough in other contexts.
+- If an ability has been shown at low intensity, do not describe its theoretical maximum as established fact.
+The whiteboard is an archive, not a theory document. Record what IS, not what COULD BE.
 ${charBlock}
 ${currentWhiteboard.chronicle.length > 0 ? 'Match the density and style of existing entries when adding new ones.\n' : ''}CURRENT WHITEBOARD STATE:
 ${serialized}
