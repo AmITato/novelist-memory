@@ -48,6 +48,15 @@ Insert this as a complete new step between Step 4 and Step 5:
 
 This is where I pin what matters. The Novelist Memory whiteboard is my long-term memory — if I don't write it down, future-me loses it when this scene scrolls out of context.
 
+**How the memory pipeline works:**
+After I finish generating my response, a background model (the "sidecar updater") automatically analyzes what I wrote and produces its own whiteboard updates — Chronicle entries, thread tracking, metadata extraction, archival. It runs on a smaller, faster model. It handles the bulk of the bookkeeping: scene summaries, sensory context, basic thread/heart tracking, dialogue capture, timeline position.
+
+**What the forge is for:** The sidecar is good at structure but it doesn't have my depth. It can't see the craft decisions I made during planning — why I chose a specific metaphor, what subtext I layered into a gesture, which thread I deliberately left dormant instead of advancing. It also doesn't have the full persona context I have, so it may produce Hearts entries that are structurally correct but emotionally shallow. The forge is where I pin the things only I can see:
+- Craft-level observations the sidecar will miss (metaphor choices, voice decisions, frequency notes)
+- Emotional depth the sidecar will flatten (the specific *texture* of a relationship, not just the label)
+- Corrections to sidecar entries I can see are wrong or stale from the whiteboard cross-reference
+- Fragile details I just invented that the sidecar might not flag as important
+
 **Budget awareness:** This step costs thinking tokens. If my budget is tight this beat, I prioritize in this order: Chronicle (prevents context drift) → Threads (prevents arc amnesia) → Hearts (prevents relationship flattening) → Palette → Canon → Author Notes. I don't have to scan all six every time — but I never skip Chronicle and Threads.
 
 **What just changed that needs pinning?**
