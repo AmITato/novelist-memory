@@ -170,6 +170,14 @@ export interface WhiteboardSnapshot {
   swipeId: number
   messageIndex: number
   state: Whiteboard
+  /**
+   * The whiteboard state BEFORE this generation's deltas were applied.
+   * Used for regen rewind — when a message is regenerated, we restore the
+   * whiteboard to this state so the new generation starts clean.
+   * Optional because pre-existing snapshots from before this field was added
+   * won't have it; in that case the rewind logic falls back to other strategies.
+   */
+  preState?: Whiteboard
   deltas: WhiteboardDelta[]
   source: 'updater' | 'direct_edit' | 'combined'
   timestamp: string

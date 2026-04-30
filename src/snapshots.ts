@@ -35,6 +35,7 @@ export async function createSnapshot(
   finalState: Whiteboard,
   deltas: WhiteboardDelta[],
   source: WhiteboardSnapshot['source'],
+  preState?: Whiteboard,
 ): Promise<WhiteboardSnapshot> {
   const snapshot: WhiteboardSnapshot = {
     id: makeSnapshotId(),
@@ -43,6 +44,7 @@ export async function createSnapshot(
     swipeId,
     messageIndex,
     state: structuredClone(finalState),
+    preState: preState ? structuredClone(preState) : undefined,
     deltas,
     source,
     timestamp: new Date().toISOString(),
@@ -91,6 +93,26 @@ export async function getPreMessageState(
   for (let i = snapshots.length - 1; i >= 0; i--) {
     if (snapshots[i].messageId !== messageId) {
       return snapshots[i].state
+    }
+  }
+  return null
+}
+
+/**
+ * Find the most recent snapshot for a specific message (any swipe variant).
+ * Used as a fallback in regen rewind — if no other-message snapshot exists
+ * (e.g., the target is the first message of the chat), we can use this
+ * snapshot's `preState` to know what the whiteboard looked like before the
+ * message was first generated.
+ */
+export async function getLatestSnapshotForMessage(
+  chatId: string,
+  messageId: string,
+): Promise<WhiteboardSnapshot | null> {
+  const snapshots = await getSnapshots(chatId)
+  for (let i = snapshots.length - 1; i >= 0; i--) {
+    if (snapshots[i].messageId === messageId) {
+      return snapshots[i]
     }
   }
   return null

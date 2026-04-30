@@ -3,7 +3,7 @@ import { queryIntern, formatInternResults } from './intern'
 import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
 import { getArchiveStats, getArchivedMessagesByRange } from './archive'
-import { createSnapshot, getSnapshotForSwipe, getPreMessageState, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
+import { createSnapshot, getSnapshotForSwipe, getPreMessageState, getLatestSnapshotForMessage, getSnapshots, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
 import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate } from './types'
 import type { ToolInvocationPayloadDTO } from 'lumiverse-spindle-types'
 
@@ -28,6 +28,10 @@ let activeGenerationMessageId: string | null = null
 let activeGenerationIsRegen: boolean = false
 let activeGenerationType: string | null = null
 let pendingDirectDeltas: WhiteboardDelta[] = []
+// Captured at GENERATION_STARTED (post-rewind for regens) — represents the
+// whiteboard state BEFORE this generation's deltas are applied. Saved into
+// the snapshot at GENERATION_ENDED so future regens can rewind precisely.
+let preGenerationState: Whiteboard | null = null
 
 // ─── Context Handler (Pre-Assembly) ─────────────────────────────────────────
 // Seeds the Whiteboard data into the generation context BEFORE prompt assembly.
@@ -431,34 +435,72 @@ spindle.on('GENERATION_STARTED', async (payload) => {
   activeGenerationIsRegen = !!payload.targetMessageId
   activeGenerationType = (payload as { generationType?: string }).generationType ?? null
   pendingDirectDeltas = []
+  preGenerationState = null
 
   if (activeGenerationType === 'impersonate') return
-
-  if (!activeGenerationIsRegen) return
 
   const chatId = payload.chatId
   if (!chatId) return
 
-  // Regen rewind runs regardless of config.enabled — if snapshots exist,
-  // the whiteboard must be rewound before the new generation. The enabled
-  // toggle controls LLM context injection and the updater pipeline, not
-  // whether versioning/rewind works.
-  const preState = await getPreMessageState(chatId, payload.targetMessageId!)
-  if (preState) {
-    const rewound = structuredClone(preState)
-    rewound.chatId = chatId
-    await saveWhiteboard(rewound)
-    // Don't remove old snapshots — they belong to previous swipes that the user
-    // might navigate back to. The new generation will create a fresh snapshot
-    // with a different swipeId that won't collide.
-    spindle.log.info(`[NovelistMemory] Regen rewind: restored pre-message state for ${payload.targetMessageId}`)
-
-    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } })
-    await refreshMacros(chatId)
-  } else {
-    spindle.log.info(`[NovelistMemory] Regen rewind: no prior snapshot found for ${payload.targetMessageId}, whiteboard unchanged`)
+  // For regens, rewind first (before capturing pre-state). The rewind runs
+  // regardless of config.enabled — versioning is decoupled from injection.
+  if (activeGenerationIsRegen && payload.targetMessageId) {
+    await performRegenRewind(chatId, payload.targetMessageId)
   }
+
+  // Capture pre-state for THIS generation. For regens, this is the rewound
+  // state. For new generations, this is the current whiteboard. Either way,
+  // it's the "before" snapshot we'll save at GENERATION_ENDED so future
+  // regens of this message can rewind to it precisely.
+  preGenerationState = await getWhiteboard(chatId)
 })
+
+async function performRegenRewind(chatId: string, targetMessageId: string): Promise<void> {
+  // Tier 1 (most accurate): If we already have a snapshot for this message
+  // with a recorded preState, use that directly. This is exact — it's the
+  // whiteboard as it existed right before this message was first generated.
+  const targetSnap = await getLatestSnapshotForMessage(chatId, targetMessageId)
+  if (targetSnap?.preState) {
+    await applyRewind(chatId, targetSnap.preState, `target-message snapshot ${targetSnap.id}.preState`)
+    return
+  }
+
+  // Tier 2: Fall back to the latest snapshot belonging to ANY OTHER message.
+  // Its post-state is approximately "the whiteboard at the end of the previous
+  // message," which is a reasonable pre-state for the target. This is the
+  // legacy path that worked before preState was added.
+  const preState = await getPreMessageState(chatId, targetMessageId)
+  if (preState) {
+    await applyRewind(chatId, preState, 'previous-message snapshot state')
+    return
+  }
+
+  // Tier 3 (LO's case): No other-message snapshots exist, but the target
+  // message HAS been generated before (it has snapshots without preState).
+  // This means the target is the first message of the chat. The correct
+  // pre-state is an empty whiteboard.
+  const allSnaps = await getSnapshots(chatId)
+  const targetSnaps = allSnaps.filter(s => s.messageId === targetMessageId)
+  const otherSnaps = allSnaps.filter(s => s.messageId !== targetMessageId)
+  if (targetSnaps.length > 0 && otherSnaps.length === 0) {
+    await applyRewind(chatId, createEmptyWhiteboard(chatId), 'first-message reset (no prior snapshots)')
+    return
+  }
+
+  spindle.log.info(`[NovelistMemory] Regen rewind: no prior state found for ${targetMessageId}, whiteboard unchanged`)
+}
+
+async function applyRewind(chatId: string, state: Whiteboard, reason: string): Promise<void> {
+  const rewound = structuredClone(state)
+  rewound.chatId = chatId
+  await saveWhiteboard(rewound)
+  // Don't remove old snapshots — they belong to previous swipes that the user
+  // might navigate back to. The new generation will create a fresh snapshot
+  // with a different swipeId that won't collide.
+  spindle.log.info(`[NovelistMemory] Regen rewind: restored from ${reason}`)
+  spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } })
+  await refreshMacros(chatId)
+}
 
 ;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
   const p = payload as { messageId?: string, chatId?: string, content?: string, generationType?: string }
@@ -471,6 +513,7 @@ spindle.on('GENERATION_STARTED', async (payload) => {
     activeGenerationIsRegen = false
     activeGenerationType = null
     pendingDirectDeltas = []
+    preGenerationState = null
     return
   }
 
@@ -488,6 +531,7 @@ spindle.on('GENERATION_STARTED', async (payload) => {
     activeGenerationIsRegen = false
     activeGenerationType = null
     pendingDirectDeltas = []
+    preGenerationState = null
     return
   }
 
@@ -517,7 +561,7 @@ spindle.on('GENERATION_STARTED', async (payload) => {
         const finalState = await getWhiteboard(chatId)
         const allDeltas = [...pendingDirectDeltas]
         const source = allDeltas.length > 0 ? 'combined' as const : 'updater' as const
-        await createSnapshot(chatId, messageId, msg.swipe_id, msgIndex, finalState, allDeltas, source)
+        await createSnapshot(chatId, messageId, msg.swipe_id, msgIndex, finalState, allDeltas, source, preGenerationState ?? undefined)
         await pruneSnapshots(chatId)
       }
     }
@@ -529,6 +573,7 @@ spindle.on('GENERATION_STARTED', async (payload) => {
   activeGenerationIsRegen = false
   activeGenerationType = null
   pendingDirectDeltas = []
+  preGenerationState = null
 })
 
 // ─── Swipe Navigation ───────────────────────────────────────────────────────

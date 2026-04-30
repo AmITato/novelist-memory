@@ -168,6 +168,7 @@ interface WhiteboardSnapshot {
   swipeId: number         // which swipe variant
   messageIndex: number    // array position in chat (for fork lookups)
   state: Whiteboard       // full whiteboard AFTER all deltas applied
+  preState?: Whiteboard   // whiteboard BEFORE this generation's deltas (used for regen rewind)
   deltas: WhiteboardDelta[]  // all deltas from this generation
   source: 'updater' | 'direct_edit' | 'combined'
   timestamp: string
@@ -180,7 +181,7 @@ Stored per-chat at `snapshots/{chatId}.json`. Ordered by creation time.
 
 **Normal generation:** After the updater runs, a snapshot is created tagged with `messageId + swipeId + messageIndex`. The snapshot's `state` is the full whiteboard after all deltas (direct edits via `update_whiteboard` + updater).
 
-**Regeneration:** `GENERATION_STARTED` detects regen via `targetMessageId`. Before the new generation runs, the whiteboard is rewound to its pre-message state (the latest snapshot whose `messageId ≠ targetMessageId`). Old swipe snapshots are **preserved** (not deleted) so the user can swipe back. The new generation creates a fresh snapshot with the new swipe's `swipeId`.
+**Regeneration:** `GENERATION_STARTED` detects regen via `targetMessageId`. Before the new generation runs, `performRegenRewind` rewinds the whiteboard via a three-tier fallback: (1) the latest snapshot of the target message's recorded `preState` (most accurate — exact whiteboard state before this message was first generated); (2) the latest snapshot belonging to any *other* message (legacy path, treats "end of previous message" as the new pre-state); (3) empty whiteboard if the only snapshots in the chat are for the target message itself (first-message-of-chat scenario). After rewind, `preGenerationState` is captured for the new generation so its eventual snapshot will have an exact `preState` recorded. Old swipe snapshots are **preserved** (not deleted) so the user can swipe back. The new generation creates a fresh snapshot with the new swipe's `swipeId`.
 
 **Swipe navigation:** `MESSAGE_SWIPED(navigated)` looks up the snapshot for `messageId + target swipeId`. If found, restores it as the active whiteboard. If not found (swipe predates snapshot system), leaves whiteboard unchanged.
 
@@ -201,6 +202,7 @@ activeGenerationMessageId   — set by GENERATION_STARTED
 activeGenerationIsRegen     — true if targetMessageId present
 activeGenerationType        — set by GENERATION_STARTED from payload.generationType
 pendingDirectDeltas         — accumulated by update_whiteboard tool calls, reset per generation
+preGenerationState          — captured at GENERATION_STARTED (post-rewind for regens), saved into snapshot at GENERATION_ENDED
 ```
 
 ### Impersonate handling
@@ -427,6 +429,7 @@ The file `cot_phase_novelist_memory.md` contains the full integration guide for 
 9. **Fork copying parent's current state instead of fork-point state** — When no snapshots existed at the fork point, the fallback copied the parent's current whiteboard (which includes state from messages after the fork point). Fixed by returning blank instead — no snapshot = no tracked state = blank whiteboard.
 10. **Swipe not undoing `update_whiteboard` changes when `enabled = false`** — The `update_whiteboard` tool handler does not check `config.enabled` (by design — the tool should work regardless of context injection). But `GENERATION_ENDED`, `GENERATION_STARTED` (regen rewind), and `MESSAGE_SWIPED` (snapshot restore) all had `config.enabled` early-return gates that prevented snapshot creation, rewind, and restore when disabled. This meant whiteboard mutations from the tool persisted across swipes/regens with no undo mechanism. Additionally, the `GENERATION_ENDED` early return skipped state variable cleanup (`pendingDirectDeltas`, `activeGenerationIsRegen`, etc.), leaking stale state into subsequent generations. Fixed by: (1) moving `config.enabled` in `GENERATION_ENDED` to only gate the updater pipeline — snapshot creation and state cleanup always run; (2) removing the `config.enabled` gate from `GENERATION_STARTED` regen rewind; (3) removing the `config.enabled` gate from `MESSAGE_SWIPED` snapshot restore. `config.enabled` now strictly controls LLM context injection and the background updater, not versioning.
 11. **`serializeWhiteboard` crash on missing optional fields** — `serializeWhiteboard` accessed `thread.triggerConditions.length`, `thread.dependencies.length`, `thread.downstreamConsequences.length`, `heart.keyKnowledge.length`, `heart.sensoryMemories.length`, and `heart.unresolved.length` without null guards. When the model called `update_whiteboard` and omitted these optional fields (not in the tool schema's `required`), the entries were stored with `undefined` values, and the serializer crashed on the next context injection or macro refresh. Fixed in two layers: (1) `applyDelta` now backfills default empty arrays/strings on all thread, heart, and chronicle `add` entries before pushing; (2) `serializeWhiteboard` uses optional chaining (`?.length`) as a defense-in-depth guard.
+12. **Regen rewind no-op when target is the first message of the chat** — `getPreMessageState` walks backwards through snapshots looking for one belonging to a *different* message. For first-message regens, no such snapshot exists, so it returns null and the rewind no-ops — leaving any `update_whiteboard` mutations from the previous swipe baked into the new generation. The fundamental problem: snapshots stored only post-state, with no record of what the whiteboard looked like *before* the generation's deltas were applied. Fixed by introducing a tiered rewind strategy backed by an explicit `preState` field on snapshots: (1) added optional `preState: Whiteboard` to `WhiteboardSnapshot`; (2) added module-level `preGenerationState` captured at `GENERATION_STARTED` (post-rewind for regens, current state for new generations); (3) `createSnapshot` now accepts and persists `preState`; (4) `performRegenRewind` tries three tiers in order — exact preState from an existing snapshot of the target message, fall back to the latest other-message snapshot's state (legacy `getPreMessageState` path), and finally fall back to empty whiteboard if the only snapshots in the chat belong to the target message (first-message scenario). Tiers 1 and 3 are new; tier 2 is the original behavior preserved for compatibility.
 
 ## Important: tool invocation has no userId
 
