@@ -4,15 +4,18 @@ A Lumiverse Spindle extension implementing persistent memory architecture for lo
 
 ## Architecture
 
-Three components:
+Four components:
 
 1. **Whiteboard** — Structured persistent state injected into every generation. Six sections: Chronicle (what happened), Threads (active narrative arcs), Hearts (relationship dynamics), Palette (voice/style continuity), Canon (source material tracking), Author Notes (model-to-self coaching).
 
 2. **Archive** — Full message history stored externally with rich metadata indexing (in-story timestamps, character tags, scene descriptors, emotional registers, thread tags). NOT loaded into primary context.
 
-3. **Retrieval Tools** — Two tools the primary model can call:
-   - `recall_by_range` — Direct archive lookup by message index. Zero LLM overhead. The primary model sees message ranges in Chronicle entries and fetches full prose instantly.
-   - `recall_scene` — Semantic search via the Intern (background LLM). Slower but finds scenes by thematic/emotional relevance when the model doesn't know the exact message range.
+3. **Retrieval Tools** — Tools the primary model can call mid-generation:
+   - `recall_by_range` — Direct archive lookup by message index. Zero LLM overhead.
+   - `recall_scene` — Semantic search via the Intern (background LLM). Finds scenes by thematic/emotional relevance.
+   - `update_whiteboard` — Direct whiteboard mutation. The model can edit any section mid-generation without waiting for the post-gen updater.
+
+4. **Versioning** — Whiteboard snapshots tagged by message + swipe, enabling correct state on swipe navigation, regen rewind, and fork seeding.
 
 ## Project structure
 
@@ -22,12 +25,14 @@ novelist-memory/
   package.json          # Build scripts, devDependencies
   tsconfig.json         # TypeScript config
   claude.md             # This file — coding guidelines for AI assistants
+  cot_phase_novelist_memory.md  # CoT integration guide for Lumia's Weave Planning Phase
   src/
     backend.ts          # Main entry — hooks, tools, events, commands, frontend messaging
     frontend.ts         # Drawer tab UI — whiteboard viewer, recall interface, archive stats, settings
     types.ts            # All TypeScript interfaces
     config.ts           # Extension config with storage persistence + sidecar connection resolution
-    whiteboard.ts       # Whiteboard CRUD, delta application, serialization for injection
+    whiteboard.ts       # Whiteboard CRUD, delta application, calibration bank, serialization
+    snapshots.ts        # Whiteboard versioning — snapshot CRUD, fork seeding, pruning
     archive.ts          # Archive CRUD, metadata indexing, search helpers
     intern.ts           # Intern retrieval logic — index search, scene annotation
     updater.ts          # Post-generation pipeline — whiteboard updates, message archival
@@ -36,6 +41,16 @@ novelist-memory/
     backend.js          # Built backend bundle
     frontend.js         # Built frontend bundle
 ```
+
+## Storage directories
+
+| Directory | Contents |
+|---|---|
+| `whiteboards/` | `{chatId}.json` — per-chat whiteboard state |
+| `archives/` | `{chatId}.json` — per-chat archived messages with metadata |
+| `pending/` | `{chatId}.json` — pending whiteboard updates awaiting commit |
+| `snapshots/` | `{chatId}.json` — whiteboard snapshot chains for versioning |
+| `calibration/` | `{chatId}.json` — per-chat calibration example banks |
 
 ## Tech stack
 
@@ -59,23 +74,32 @@ bun run build:frontend # Frontend only
 
 | Permission | Why |
 |---|---|
-| `generation` | Quiet gen for whiteboard updates and intern retrieval |
+| `generation` | Quiet gen for whiteboard updates, intern retrieval, and GENERATION_STARTED/GENERATION_ENDED events |
 | `interceptor` | Inject serialized whiteboard into final message array post-assembly |
 | `context_handler` | Seed whiteboard data into generation context pre-assembly |
 | `chat_mutation` | Read chat messages for archival and context |
-| `chats` | Access active chat info, council settings for sidecar resolution |
-| `tools` | Register `recall_scene`, `recall_by_range`, and `random_number` tools |
+| `chats` | Access active chat info, council settings for sidecar resolution, fork detection |
+| `tools` | Register `recall_scene`, `recall_by_range`, `update_whiteboard`, and `random_number` tools |
 
 ## Hook points
 
 ### Context Handler (priority 50)
-Runs before prompt assembly. Reads the whiteboard for the active chat and attaches it to the generation context as `novelistMemory.whiteboard` and `novelistMemory.serialized`. Other extensions can read this.
+Runs before prompt assembly. Reads the whiteboard for the active chat and attaches it to the generation context as `novelistMemory.whiteboard` and `novelistMemory.serialized`. Other extensions can read this. Also captures `activeGenerationChatId` for tool handlers.
 
 ### Interceptor (priority 30)
 Runs after prompt assembly. Injects the serialized whiteboard as a system message immediately after the main system prompt. Creates a Prompt Breakdown entry ("Novelist Memory: Whiteboard") so the user can see it in the token breakdown.
 
+### Tool: `update_whiteboard` (inline_available)
+Direct whiteboard mutation tool. The primary model can call this mid-generation to edit the whiteboard immediately rather than waiting for the post-generation updater pipeline. Accepts a `WhiteboardDelta` object as its arguments — same schema the updater produces. Supports all six sections: chronicle (add/update), threads (add/update), hearts (add/update), palette (shallow merge), canon (timeline/events), authorNotes (add/remove).
+
+Behavior is controlled by the `directEditRequiresReview` config option:
+- **`false` (default)** — Delta is applied immediately via `applyDelta` + `saveWhiteboard`. Frontend is notified with `whiteboard_data` so the drawer updates live. Macros are refreshed. Delta is accumulated in `pendingDirectDeltas` for the eventual snapshot.
+- **`true`** — Delta is wrapped in a `PendingUpdate` and saved via `savePendingUpdate`. Frontend is notified with `pending_update`. The user can review/edit/reject from the drawer. Auto-commit timer applies if `autoCommitUpdates` is enabled.
+
+Uses `activeGenerationChatId` (captured by context handler) — same pattern as the recall tools.
+
 ### Tool: `recall_by_range` (inline_available)
-Direct archive lookup by message index range. No LLM calls, instant retrieval. The primary model reads `Messages: #N–#M` in Chronicle entries and calls this tool to fetch the full original prose. Returns formatted messages with metadata headers.
+Direct archive lookup by message index range. No LLM calls, instant retrieval. The primary model reads `Messages: #N–#M` in Chronicle entries and calls this tool to fetch the full original prose. Returns formatted messages with metadata headers. Falls back to `spindle.chat.getMessages()` for messages not yet archived.
 
 ### Tool: `recall_scene` (inline_available)
 Semantic search via the Intern (background LLM). The primary model calls it with a natural language query describing what scene it needs and why. The intern:
@@ -90,29 +114,152 @@ Slower than `recall_by_range` (2-3 background LLM calls) but finds scenes by the
 Test tool for validating inline function calling. Generates a random number between min and max.
 
 ### Events
-- `GENERATION_ENDED` — triggers whiteboard update + archive check. Captured via catch-all overload to get userId: `(spindle.on as Function)('GENERATION_ENDED', (payload, userId) => {...})`.
-- `CHAT_CHANGED` — refreshes macros for the new chat.
+
+- `GENERATION_STARTED` — Captures `targetMessageId` for regen detection, `generationType` for impersonate detection. If impersonate, returns early (skips all processing). If regen (`targetMessageId` present), rewinds whiteboard to pre-message state. Resets per-generation state (`pendingDirectDeltas`, etc.). Uses typed overload: `spindle.on('GENERATION_STARTED', handler)`.
+- `GENERATION_ENDED` — First checks `generationType` (from payload, with fallback to value captured by `GENERATION_STARTED`). If impersonate, skips everything and resets state. Otherwise runs updater pipeline, then creates a `WhiteboardSnapshot` tagged with messageId + swipeId + messageIndex. Captured via catch-all overload to get userId: `(spindle.on as Function)('GENERATION_ENDED', (payload, userId) => {...})`.
+- `MESSAGE_SWIPED` — Handles swipe navigation. When `action === 'navigated'`, restores the whiteboard snapshot for the target swipe. If no snapshot found (swipe predates snapshot system), leaves whiteboard unchanged. Uses typed overload: `spindle.on('MESSAGE_SWIPED', handler)`.
+- `CHAT_SWITCHED` — Handles fork seeding. When the user navigates to a forked chat with an empty whiteboard, seeds it from the parent chat's snapshots at the fork point. If no snapshots exist for the fork point, leaves whiteboard blank rather than copying stale state. Uses cast overload: `(spindle.on as Function)('CHAT_SWITCHED', handler)`.
+- `CHAT_CHANGED` — Refreshes macros for the new chat.
 
 ## Data flow per generation cycle
 
 ```
-1. Context Handler reads whiteboard → attaches to context
-2. Interceptor injects serialized whiteboard into message array
+1. GENERATION_STARTED fires:
+   - Captures targetMessageId, generationType
+   - If impersonate → skip everything, return
+   - If regen → rewind whiteboard to pre-message state (preserve old swipe snapshots)
+   - Reset pendingDirectDeltas
+
+2. Context Handler reads whiteboard → attaches to context
+
+3. Interceptor injects serialized whiteboard into message array
    (Chronicle entries show "Messages: #N–#M" for each scene)
-3. Primary model generates:
-   a. During <think> phase, reads Chronicle summaries
-   b. Identifies scenes where full prose is needed
-   c. Calls recall_by_range with message indices from Chronicle
-   d. Receives full archived messages instantly (no LLM overhead)
-   e. Continues generation with full scene context
-4. GENERATION_ENDED fires → updater runs:
-   a. Resolves background connection (sidecar if enabled, else active)
-   b. Quiet gen analyzes new exchange → produces whiteboard delta
-      (includes sourceMessageRange for each Chronicle entry)
-   c. Delta saved as pending update (auto-commits after review window)
-   d. Messages past sliding window → archived with metadata extraction
-5. Frontend notified of pending update → user can review/edit/reject
+
+4. Primary model generates:
+   a. During <think> phase, reads Chronicle summaries + whiteboard
+   b. May call recall_by_range for full prose from Chronicle message ranges
+   c. May call recall_scene for thematic/emotional scene retrieval
+   d. May call update_whiteboard to pin changes mid-generation
+      (deltas accumulated in pendingDirectDeltas for snapshot)
+   e. Continues generation with full context
+
+5. GENERATION_ENDED fires:
+   a. If impersonate → skip, reset state, return
+   b. Runs updater pipeline:
+      - Quiet gen analyzes new exchange → produces whiteboard delta
+      - Delta saved as pending update (auto-commits after review window)
+      - Messages past sliding window → archived with metadata extraction
+   c. Creates WhiteboardSnapshot with final state + all accumulated deltas
+   d. Prunes old snapshots per retention policy
+   e. Resets per-generation state
 ```
+
+## Whiteboard versioning (swipe/fork/regen awareness)
+
+The whiteboard is versioned via snapshots so that swipes, regenerations, and forks don't desync narrative state from what the user is actually reading.
+
+### Core data structure: `WhiteboardSnapshot`
+
+```ts
+interface WhiteboardSnapshot {
+  id: string              // "snap_{timestamp}_{random6}"
+  chatId: string
+  messageId: string       // which message's generation produced this
+  swipeId: number         // which swipe variant
+  messageIndex: number    // array position in chat (for fork lookups)
+  state: Whiteboard       // full whiteboard AFTER all deltas applied
+  deltas: WhiteboardDelta[]  // all deltas from this generation
+  source: 'updater' | 'direct_edit' | 'combined'
+  timestamp: string
+}
+```
+
+Stored per-chat at `snapshots/{chatId}.json`. Ordered by creation time.
+
+### How it handles each scenario
+
+**Normal generation:** After the updater runs, a snapshot is created tagged with `messageId + swipeId + messageIndex`. The snapshot's `state` is the full whiteboard after all deltas (direct edits via `update_whiteboard` + updater).
+
+**Regeneration:** `GENERATION_STARTED` detects regen via `targetMessageId`. Before the new generation runs, the whiteboard is rewound to its pre-message state (the latest snapshot whose `messageId ≠ targetMessageId`). Old swipe snapshots are **preserved** (not deleted) so the user can swipe back. The new generation creates a fresh snapshot with the new swipe's `swipeId`.
+
+**Swipe navigation:** `MESSAGE_SWIPED(navigated)` looks up the snapshot for `messageId + target swipeId`. If found, restores it as the active whiteboard. If not found (swipe predates snapshot system), leaves whiteboard unchanged.
+
+**Fork:** `CHAT_SWITCHED` detects forked chats via `metadata.branched_from`. If the new branch's whiteboard is empty and snapshots exist at the fork point, seeds from them and copies swipe-variant snapshots (remapped to the branch's message IDs). If no snapshots exist at the fork point, **leaves whiteboard blank** rather than copying stale state from the parent's current position.
+
+### Pruning
+
+Controlled by two config fields:
+- `snapshotRetentionAllSwipes` (default 1): Keep ALL swipe snapshots for the last N messages
+- `snapshotRetentionMessages` (default 10): Keep the latest snapshot per message for the last N messages
+- Everything older is dropped
+
+### Module-level generation state
+
+```
+activeGenerationChatId      — set by context handler (pre-assembly)
+activeGenerationMessageId   — set by GENERATION_STARTED
+activeGenerationIsRegen     — true if targetMessageId present
+activeGenerationType        — set by GENERATION_STARTED from payload.generationType
+pendingDirectDeltas         — accumulated by update_whiteboard tool calls, reset per generation
+```
+
+### Impersonate handling
+
+Impersonate generates a user-side message (not narrative content). Both `GENERATION_STARTED` and `GENERATION_ENDED` check `generationType === 'impersonate'` and skip all processing (no updater, no snapshot, no rewind). The `generationType` field is emitted by Lumiverse core (`generate.service.ts`) — added in [PR #88](https://github.com/prolix-oc/Lumiverse/pull/88). The corresponding type definition is in [lumiverse-spindle-types PR #6](https://github.com/prolix-oc/lumiverse-spindle-types/pull/6).
+
+## Calibration bank system
+
+The updater prompt uses a two-layer calibration system to ensure high-quality whiteboard entries from the first generation.
+
+### Layer 1: Default structural examples (always available)
+Built into `prompts.ts` as constants. Use generic placeholder characters (A, B, C, Authority) to show the right *shape* and *density* without being tied to any story. These fire for any sparse section that doesn't have a per-chat calibration bank.
+
+### Layer 2: Per-chat calibration bank (optional override)
+Stored at `calibration/{chatId}.json`. When present, overrides the defaults for that section. Story-specific examples (e.g., MHA character examples for Lumia's chats) live here.
+
+### CalibrationBank type
+
+```ts
+interface CalibrationBank {
+  chatId: string
+  chronicle?: string[]    // example chronicle entries (raw text blocks)
+  threads?: string[]      // example thread entries
+  hearts?: string[]       // example hearts entries
+  palette?: string[]      // example palette entries
+  canon?: string[]        // example canon entries
+  authorNotes?: string[]  // example author notes
+}
+```
+
+### Phase-out logic
+
+Each section has a sparseness threshold (Chronicle < 3, Threads < 2, Hearts < 2, Palette < 2 total entries, Canon < 1, AuthorNotes < 2). When a section is sparse:
+- If per-chat bank has examples for this section → inject as "STORY-SPECIFIC EXAMPLES"
+- If no bank examples → inject default structural examples as "STRUCTURAL EXAMPLE"
+- If section is NOT sparse → nothing injected. Existing entries serve as the style guide.
+
+### Adaptive Canon mode
+
+The updater prompt detects whether the story is an adaptation or original fiction by checking if `canon.completedEvents`, `upcomingEvents`, or `butterflyLog` have entries:
+- **Adaptation mode**: Full source material tracking, deviation logging, butterfly effect analysis, foreshadowing flags
+- **Original fiction mode**: Lightweight timeline tracking, no source-material overhead
+
+## Updater prompt structure
+
+The `buildUpdatePrompt` function in `prompts.ts` builds a comprehensive system prompt for the background updater LLM:
+
+1. **Role declaration** — "You are a narrative continuity analyst"
+2. **Current whiteboard state** — full serialized whiteboard
+3. **Recent context** — last few exchanges for continuity
+4. **Latest exchange** — user + assistant messages, with message index range
+5. **Section guidelines** — per-section with:
+   - Density targets (e.g., Chronicle: 3-6 sentences per entry)
+   - Entry cadence rules (when to add vs. skip)
+   - DO/DON'T rules (negative examples are gold for smaller models)
+   - Calibration examples (conditionally injected based on sparseness)
+6. **JSON schema** — exact WhiteboardDelta format expected
+
+Called with `temperature: 0.3, max_tokens: 4000` via the sidecar connection.
 
 ## Model connection resolution
 
@@ -136,6 +283,9 @@ This is handled by `resolveBackgroundConnectionId()` in `config.ts`. userId is t
 | `whiteboardTokenBudget` | `12000` | Warn when whiteboard exceeds this token count |
 | `internConnectionId` | (none) | Optional explicit connection override for intern model |
 | `updaterConnectionId` | (none) | Optional explicit connection override for updater model |
+| `directEditRequiresReview` | `false` | Whether model-initiated whiteboard edits go through the pending/review flow |
+| `snapshotRetentionMessages` | `10` | Keep latest snapshot per message for this many recent messages |
+| `snapshotRetentionAllSwipes` | `1` | Keep all swipe snapshots for the last N messages |
 | `compactionThreshold` | `100` | Chronicle entries before compaction triggers |
 | `auditIntervalMessages` | `40` | Messages between full whiteboard audits |
 
@@ -168,11 +318,15 @@ Settings save immediately on change (no save button needed). Green "✓ Settings
 - `GenerationRequestDTO` has fields: `messages`, `parameters`, `connection_id`, `signal`, `userId`, `tools`. The `type` field is auto-injected by `quiet()`/`raw()`/`batch()` — don't pass it manually.
 - **Operator-scoped userId**: `GenerationRequestDTO.userId` is a field ON the request object (NOT a second argument). For operator-scoped extensions (or globally installed), this is REQUIRED — without it you get `Error: userId is required for operator-scoped extensions`. Thread userId from event handlers (`GENERATION_ENDED`, `TOOL_INVOCATION`, `onFrontendMessage`) and include it as `{ ...request, userId }` in all `quiet()`/`raw()` calls. For user-scoped extensions, `userId` is auto-inferred and can be omitted.
 - `spindle.on('GENERATION_ENDED', handler)` — use `(spindle.on as Function)('GENERATION_ENDED', (payload, userId) => {...})` to capture the userId from the catch-all overload.
+- `spindle.on('GENERATION_STARTED', handler)` — has a typed overload. Payload includes `generationId`, `chatId`, `model`, `targetMessageId?`, `characterId?`, `characterName?`, `generationType?`.
+- `spindle.on('MESSAGE_SWIPED', handler)` — has a typed overload. Payload includes `chatId`, `message` (full `ChatMessageDTO`), `action` (`'added' | 'updated' | 'deleted' | 'navigated'`), `swipeId`, `previousSwipeId?`.
+- `CHAT_SWITCHED` — no typed overload. Use `(spindle.on as Function)('CHAT_SWITCHED', handler)`. Payload: `{ chatId: string | null }`.
 - `SpindleDrawerTabOptions` uses `title` (not `label`), and the handle has `destroy()` (not `dispose()`).
 - `ctx.onBackendMessage()` callback gets `(payload: unknown)` — no userId on the frontend side.
 - `spindle.onFrontendMessage()` callback gets `(payload: unknown, userId: string)` — userId is always present.
 - **Inline function calling**: Tools registered with `inline_available: true` are sent to the primary model as function call schemas during generation (requires `enableFunctionCalling` in the preset's completion settings). Tool names are sanitized: `extensionId:toolName` → `extensionId__toolName`. The tool execution uses Lumiverse's existing 3-round inline tool call loop.
 - **Tool invocations have no userId**: `invokeExtensionTool` in the worker host strips `userId`/`__userId`/`__user_id` from args for security. The `tool_invocation` message carries no userId. The handler receives `(payload)` only — NOT `(payload, userId)`. Don't call APIs that need userId (like `getActive()`) in tool handlers. Use the context handler to capture state beforehand.
+- **`spindle.chats.get(chatId)`** — returns `ChatDTO` with `metadata: Record<string, unknown>`. Forked chats have `metadata.branched_from` (parent chat ID) and `metadata.branch_at_message` (fork-point message ID) at runtime. Access with type narrowing: `chat.metadata.branched_from as string | undefined`.
 
 ## Lumiverse core changes (inline tool calling)
 
@@ -188,12 +342,48 @@ We added inline function calling support for Spindle extension tools to Lumivers
 - Extended `executeInlineCouncilToolCalls()` to handle both Council-prefixed tools (`memberPrefix_toolName`) and bare extension tools (direct `toolsByName` lookup). Extension tools dispatch via `invokeExtensionCouncilTool` without council member context.
 - Relaxed streaming loop dispatch gate — no longer requires `inlineMembersByPrefix`, fires when `inlineToolDefsByName` exists.
 
-### What was changed in lumiverse-spindle-types (local only, needs npm publish)
+## Lumiverse core changes (generation type events)
+
+Added `generationType` to all `GENERATION_STARTED` and `GENERATION_ENDED` event emissions in `generate.service.ts`. Same PR: https://github.com/prolix-oc/Lumiverse/pull/88
+
+**`src/services/generate.service.ts`:**
+- Added `generationType: lifecycle.generationType` to the `GENERATION_STARTED` emission (~line 1353)
+- Added `generationType: lifecycle.generationType` to all three `GENERATION_ENDED` emissions (success ~2776, pre-stream error ~2048, mid-stream error ~2972)
+- Exposes `normal`, `continue`, `regenerate`, `swipe`, or `impersonate` so extensions can distinguish generation types
+
+### What was changed in lumiverse-spindle-types
+
+PR: https://github.com/prolix-oc/lumiverse-spindle-types/pull/6
 
 **`src/tools.ts`** — Added `inline_available?: boolean` to `ToolRegistration`
-**`src/api.ts`** — Added `inline_available?: boolean` to `ToolRegistrationDTO`
+**`src/api.ts`** — Added `inline_available?: boolean` to `ToolRegistrationDTO`, `generationType?: string` to `GenerationStartedPayloadDTO` and `GenerationEndedPayloadDTO`
 
-These changes were applied locally in `node_modules/` and `clean/` cache. The `lumiverse-spindle-types` npm package (published at `prolix-oc/lumiverse-spindle-types`) has NOT been updated yet — it needs a new version published with the field added.
+These changes are applied locally in `node_modules/` and `clean/` cache. PR #6 is open against `prolix-oc/lumiverse-spindle-types` — pending merge and npm publish.
+
+## Lumiverse generation lifecycle (reference)
+
+| User Action | Events Fired (in order) |
+|---|---|
+| **Send new message** | `MESSAGE_SENT` (user), `GENERATION_STARTED`, streaming..., `MESSAGE_SENT` (assistant), `GENERATION_ENDED` |
+| **Regenerate** | `MESSAGE_SWIPED(added)` (blank swipe), `GENERATION_STARTED(targetMessageId=X)`, streaming..., `MESSAGE_SWIPED(updated)`, `GENERATION_ENDED(messageId=X)` |
+| **Continue** | `GENERATION_STARTED(targetMessageId=X)`, streaming..., `MESSAGE_EDITED`, `GENERATION_ENDED(messageId=X)` |
+| **Swipe left/right** | `MESSAGE_SWIPED(navigated)` — no generation events |
+| **Impersonate** | `GENERATION_STARTED(generationType='impersonate')`, streaming..., `GENERATION_ENDED(generationType='impersonate')` — creates user message |
+| **Fork** | New chat created via REST. `CHAT_SWITCHED` when user navigates to it |
+
+Key facts:
+- Tool call round-trips happen INSIDE `runGeneration` — they do NOT fire separate events. Max 3 rounds.
+- `GENERATION_ENDED` fires exactly ONCE per `startGeneration` call.
+- `quiet`/`raw`/`batch`/`summarize` generations never fire `GENERATION_ENDED`.
+- Forks create a **new chat** with copied messages. `metadata.branched_from` and `metadata.branch_at_message` are set on the new chat.
+
+## CoT integration (Lumia's Weave Planning Phase)
+
+The file `cot_phase_novelist_memory.md` contains the full integration guide for adding Novelist Memory awareness to Lumia's chain-of-thought in the Lucid Loom preset. Three insertions:
+
+1. **Step 2 addition (Archive Dive)** — Guidance for calling `recall_by_range` and `recall_scene` when memory feels thin during "Ground Myself in the Last Beat."
+2. **Step 4 addition (Whiteboard Cross-Reference)** — Active scanning of the injected whiteboard during "Track the Bigger Picture" to catch stale entries.
+3. **NEW Step 4.5 (The Memory Forge)** — Full new step where Lumia pins changes to the whiteboard via `update_whiteboard`. Walks through each section with concrete tool call examples.
 
 ## Style conventions
 
@@ -216,7 +406,12 @@ These changes were applied locally in `node_modules/` and `clean/` cache. The `l
 6. **Scene-based chronicle, not message-count-based** — Update prompt instructs the model to add entries based on narrative density, not rigid counting.
 7. **Sidecar by default** — Background LLM calls use the Council sidecar connection to avoid burning expensive frontier model tokens on bookkeeping. Toggleable in settings.
 8. **Settings in drawer tab** — Lumiverse doesn't have a per-extension settings hook in the Spindle panel. All config lives in the drawer's Settings sub-tab.
-9. **Inline function calling** — Both `recall_by_range` and `recall_scene` use `inline_available: true` so the primary model (e.g., Lumia) can call them mid-generation during its thinking/planning phase without Council.
+9. **Inline function calling** — `recall_by_range`, `recall_scene`, and `update_whiteboard` use `inline_available: true` so the primary model can call them mid-generation during its thinking/planning phase without Council.
+10. **Calibration bank for prompt quality** — Two-layer calibration: default structural examples (generic characters, always available) + per-chat story-specific examples (override defaults when sparse). Examples phase out once the whiteboard fills past threshold.
+11. **Adaptive Canon mode** — Updater prompt detects adaptation vs original fiction from existing Canon entries and adjusts guidance accordingly.
+12. **Impersonate skip** — `GENERATION_STARTED` and `GENERATION_ENDED` check `generationType === 'impersonate'` and skip all processing. Impersonate generates user-side messages, not narrative content.
+13. **Snapshot preservation on regen** — Old swipe snapshots are NOT deleted during regen rewind. The user can swipe back to a previous response and the whiteboard restores correctly.
+14. **Blank fork on missing snapshots** — When forking to a point with no snapshot data, the whiteboard starts blank rather than copying stale state from the parent's current position.
 
 ## Bugs fixed (session log)
 
@@ -227,6 +422,8 @@ These changes were applied locally in `node_modules/` and `clean/` cache. The `l
 5. **recall_by_range returning empty for non-archived messages** — Only looked in the archive, which is empty for new chats or messages within the sliding window. Added fallback to `spindle.chat.getMessages()` for direct chat history access regardless of whiteboard/archival state.
 6. **GENERATION_ENDED firing when whiteboard disabled** — The event handler was running the full updater pipeline even with `config.enabled = false`. Moved the `config.enabled` check to the very top of the handler, before any other work.
 7. **Tool invocations failing with "can't determine active chat"** — `invokeExtensionTool` strips `userId` from args (security) and doesn't pass it in the `tool_invocation` message. The `TOOL_INVOCATION` handler only receives `(payload)` — no userId second arg. This made `spindle.chats.getActive()` fail for operator-scoped extensions. Fixed by capturing `activeGenerationChatId` in the context handler (fires before prompt assembly, before tools execute) and reading it in the tool handler. No `getActive()` call needed.
+8. **Swipe-back not restoring whiteboard** — `removeSnapshotsForMessage` in the regen rewind handler was deleting ALL snapshots for the message, including those for previous swipes. Fixed by preserving old swipe snapshots — only the whiteboard state is rewound, not the snapshot history.
+9. **Fork copying parent's current state instead of fork-point state** — When no snapshots existed at the fork point, the fallback copied the parent's current whiteboard (which includes state from messages after the fork point). Fixed by returning blank instead — no snapshot = no tracked state = blank whiteboard.
 
 ## Important: tool invocation has no userId
 
@@ -240,4 +437,5 @@ These changes were applied locally in `node_modules/` and `clean/` cache. The `l
 - **Full audit** — every N messages, cross-check whiteboard against archive for drift
 - **Token counting** — using rough char/4 estimates; could use `spindle.tokens.countText()` for accuracy
 - **Connection picker UI** — dropdown listing available connections instead of raw ID text fields
-- **Phase 2.75 CoT integration** — Adding a section to Lumia's chain-of-thought template for Archive Dive retrieval during the thinking phase
+- **Calibration bank UI** — frontend interface for populating per-chat calibration examples (currently requires manual JSON editing)
+- **`removeSnapshotsForMessage` cleanup** — function exists in `snapshots.ts` but is no longer called. Consider removing or repurposing for manual cleanup.
