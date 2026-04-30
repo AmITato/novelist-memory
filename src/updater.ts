@@ -145,7 +145,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         changes: delta,
         autoCommitAt: pendingUpdate.autoCommitAt,
       },
-    })
+    }, userId)
 
     // Auto-commit after the review window
     setTimeout(async () => {
@@ -154,7 +154,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         spindle.sendToFrontend({
           type: 'update_committed',
           data: { updateId: pendingUpdate.id, chatId },
-        })
+        }, userId)
         spindle.log.info(`Auto-committed whiteboard update ${pendingUpdate.id}`)
       } catch {
         // Already committed or rejected by user — that's fine
@@ -169,7 +169,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         changes: delta,
         requiresReview: true,
       },
-    })
+    }, userId)
   }
 }
 

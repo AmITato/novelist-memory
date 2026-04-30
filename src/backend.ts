@@ -33,6 +33,11 @@ let pendingDirectDeltas: WhiteboardDelta[] = []
 // whiteboard state BEFORE this generation's deltas are applied. Saved into
 // the snapshot at GENERATION_ENDED so future regens can rewind precisely.
 let preGenerationState: Whiteboard | null = null
+// Last known userId — captured from any handler that receives it (GENERATION_ENDED,
+// onFrontendMessage, etc.). Used to target sendToFrontend calls from event handlers
+// that don't receive userId directly (GENERATION_STARTED, MESSAGE_SWIPED, tool handlers).
+// Without this, broadcast sendToFrontend calls may not reach the frontend drawer.
+let lastKnownUserId: string | null = null
 
 // ─── Context Handler (Pre-Assembly) ─────────────────────────────────────────
 // Seeds the Whiteboard data into the generation context BEFORE prompt assembly.
@@ -327,7 +332,7 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
       }
       await savePendingUpdate(pending)
       pendingDirectDeltas.push(structuredClone(delta))
-      spindle.sendToFrontend({ type: 'pending_update', data: { chatId, update: pending } })
+      spindle.sendToFrontend({ type: 'pending_update', data: { chatId, update: pending } }, lastKnownUserId ?? undefined)
       spindle.log.info(`[NovelistMemory] Direct edit queued as pending update ${updateId} (review required)`)
 
       const sections = [
@@ -348,7 +353,7 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
     pendingDirectDeltas.push(structuredClone(delta))
 
-    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: updated } })
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: updated } }, lastKnownUserId ?? undefined)
 
     await refreshMacros(chatId)
 
@@ -499,11 +504,12 @@ async function applyRewind(chatId: string, state: Whiteboard, reason: string): P
   // might navigate back to. The new generation will create a fresh snapshot
   // with a different swipeId that won't collide.
   spindle.log.info(`[NovelistMemory] Regen rewind: restored from ${reason}`)
-  spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } })
+  spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } }, lastKnownUserId ?? undefined)
   await refreshMacros(chatId)
 }
 
 ;(spindle.on as Function)('GENERATION_ENDED', async (payload: unknown, userId?: string) => {
+  if (userId) lastKnownUserId = userId
   const p = payload as { messageId?: string, chatId?: string, content?: string, generationType?: string }
 
   const genType = p.generationType ?? activeGenerationType
@@ -594,7 +600,7 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
     const restored = structuredClone(snapshot.state)
     restored.chatId = chatId
     await saveWhiteboard(restored)
-    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: restored } })
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: restored } }, lastKnownUserId ?? undefined)
     await refreshMacros(chatId)
     spindle.log.info(`[NovelistMemory] Swipe nav: restored snapshot ${snapshot.id} for ${messageId} swipe ${targetSwipeId}`)
   } else {
@@ -632,7 +638,7 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
 
     const seeded = await seedFromParent(newChatId, parentChatId, forkMessageId)
     if (seeded) {
-      spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId: newChatId, whiteboard: seeded } })
+      spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId: newChatId, whiteboard: seeded } }, lastKnownUserId ?? undefined)
       await refreshMacros(newChatId)
     }
   } catch (err) {
@@ -643,6 +649,7 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
 // ─── Frontend Message Handling ──────────────────────────────────────────────
 
 spindle.onFrontendMessage(async (raw, userId) => {
+  if (userId) lastKnownUserId = userId
   const payload = raw as { type: string, data?: Record<string, unknown> }
   switch (payload.type) {
     case 'get_whiteboard': {
@@ -766,15 +773,15 @@ spindle.commands.register([
 spindle.commands.onInvoked(async (commandId: string, context: { chatId?: string }) => {
   switch (commandId) {
     case 'open_whiteboard':
-      spindle.sendToFrontend({ type: 'open_whiteboard', data: { chatId: context.chatId } })
+      spindle.sendToFrontend({ type: 'open_whiteboard', data: { chatId: context.chatId } }, lastKnownUserId ?? undefined)
       break
     case 'recall_scene':
-      spindle.sendToFrontend({ type: 'open_recall', data: { chatId: context.chatId } })
+      spindle.sendToFrontend({ type: 'open_recall', data: { chatId: context.chatId } }, lastKnownUserId ?? undefined)
       break
     case 'archive_stats':
       if (context.chatId) {
         const stats = await getArchiveStats(context.chatId)
-        spindle.sendToFrontend({ type: 'archive_stats', data: { chatId: context.chatId, stats } })
+        spindle.sendToFrontend({ type: 'archive_stats', data: { chatId: context.chatId, stats } }, lastKnownUserId ?? undefined)
       }
       break
   }
