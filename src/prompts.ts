@@ -236,6 +236,8 @@ The card and persona are ESTABLISHED BACKSTORY. They tell you who these characte
 - **Chronicle**: Describe what the SCENE showed, not what the card says could happen. The card is context for understanding why a character acted a certain way, but the Chronicle records what was written on the page.
 - **Threads**: The card's descriptions of abilities, relationships, and tensions are valid sources for trigger conditions and downstream consequences. But the thread's STATUS is determined by touchpoints in the actual story, not by how important the card makes it sound.
 - **Timeline/Canon**: Card backstory does NOT count as a completed event. Only events that occurred in the story's actual timeline.
+
+Pay special attention to the persona's descriptions of HOW characters relate to each other — not just labels like "protective" or "fierce," but the specific moments, physical reactions, and behavioral patterns that define the bond. If the persona describes a character crying, showing photos, burning food at midnight, or any concrete expression of love/fear/pride — those details belong in Hearts (keyKnowledge, sensoryMemories, processing) and Palette (fragileDetails). The emotional specifics in the persona are the most valuable material you have. Don't summarize them into adjectives.
 ` : ''
 
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
