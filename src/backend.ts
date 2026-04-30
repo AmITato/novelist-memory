@@ -633,7 +633,8 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
 
 // ─── Fork Seeding ───────────────────────────────────────────────────────────
 
-;(spindle.on as Function)('CHAT_SWITCHED', async (payload: { chatId: string | null }) => {
+;(spindle.on as Function)('CHAT_SWITCHED', async (payload: { chatId: string | null }, userId?: string) => {
+  if (userId) lastKnownUserId = userId
   if (!payload.chatId) return
 
   const config = await getConfig()
@@ -642,7 +643,7 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
   const newChatId = payload.chatId
 
   try {
-    const chat = await spindle.chats.get(newChatId)
+    const chat = await spindle.chats.get(newChatId, userId ?? lastKnownUserId ?? undefined)
     if (!chat) return
 
     const parentChatId = chat.metadata.branched_from as string | undefined
