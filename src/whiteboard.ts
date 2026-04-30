@@ -75,7 +75,14 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
   const updated = structuredClone(whiteboard)
 
   if (delta.chronicle) {
-    if (delta.chronicle.add) updated.chronicle.push(...delta.chronicle.add)
+    if (delta.chronicle.add) {
+      for (const entry of delta.chronicle.add) {
+        entry.charactersPresent ??= []
+        entry.emotionalStates ??= {}
+        entry.sensoryContext ??= ''
+      }
+      updated.chronicle.push(...delta.chronicle.add)
+    }
     if (delta.chronicle.update) {
       for (const partial of delta.chronicle.update) {
         const existing = updated.chronicle.find(c => c.id === partial.id)
@@ -85,7 +92,16 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
   }
 
   if (delta.threads) {
-    if (delta.threads.add) updated.threads.push(...delta.threads.add)
+    if (delta.threads.add) {
+      // Backfill optional array fields the model may omit — the tool schema
+      // doesn't mark them required, but the serializer and type expect arrays.
+      for (const thread of delta.threads.add) {
+        thread.dependencies ??= []
+        thread.triggerConditions ??= []
+        thread.downstreamConsequences ??= []
+      }
+      updated.threads.push(...delta.threads.add)
+    }
     if (delta.threads.update) {
       for (const partial of delta.threads.update) {
         const existing = updated.threads.find(t => t.id === partial.id)
@@ -95,7 +111,17 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
   }
 
   if (delta.hearts) {
-    if (delta.hearts.add) updated.hearts.push(...delta.hearts.add)
+    if (delta.hearts.add) {
+      // Backfill optional fields — same reason as threads above.
+      for (const heart of delta.hearts.add) {
+        heart.keyKnowledge ??= []
+        heart.processing ??= ''
+        heart.sensoryMemories ??= []
+        heart.unresolved ??= []
+        heart.nextBeat ??= ''
+      }
+      updated.hearts.push(...delta.hearts.add)
+    }
     if (delta.hearts.update) {
       for (const partial of delta.hearts.update) {
         const existing = updated.hearts.find(h => h.id === partial.id)
@@ -224,11 +250,11 @@ export function serializeWhiteboard(wb: Whiteboard): string {
       sections.push(`${thread.name} — STATUS: ${thread.status}`)
       sections.push(`Last touched: ${thread.lastTouched}`)
       sections.push(`What: ${thread.summary}`)
-      if (thread.dependencies.length > 0)
+      if (thread.dependencies?.length > 0)
         sections.push(`Dependencies: ${thread.dependencies.join('; ')}`)
-      if (thread.triggerConditions.length > 0)
+      if (thread.triggerConditions?.length > 0)
         sections.push(`Triggers: ${thread.triggerConditions.join('; ')}`)
-      if (thread.downstreamConsequences.length > 0)
+      if (thread.downstreamConsequences?.length > 0)
         sections.push(`Downstream: ${thread.downstreamConsequences.join('; ')}`)
       sections.push('')
     }
@@ -240,12 +266,12 @@ export function serializeWhiteboard(wb: Whiteboard): string {
     for (const heart of wb.hearts) {
       sections.push(`${heart.from} → ${heart.to}:`)
       sections.push(`  Status: ${heart.status}`)
-      if (heart.keyKnowledge.length > 0)
+      if (heart.keyKnowledge?.length > 0)
         sections.push(`  Key knowledge: ${heart.keyKnowledge.join('; ')}`)
       if (heart.processing) sections.push(`  Processing: ${heart.processing}`)
-      if (heart.sensoryMemories.length > 0)
+      if (heart.sensoryMemories?.length > 0)
         sections.push(`  Sensory memories: ${heart.sensoryMemories.join('; ')}`)
-      if (heart.unresolved.length > 0)
+      if (heart.unresolved?.length > 0)
         sections.push(`  Unresolved: ${heart.unresolved.join('; ')}`)
       if (heart.nextBeat) sections.push(`  Next beat: ${heart.nextBeat}`)
       sections.push('')
