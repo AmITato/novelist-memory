@@ -230,7 +230,12 @@ ${characterContext.persona ? `User Persona: ${characterContext.persona}` : ''}
 
 Use this context to write richer, more character-specific whiteboard entries. Match the character's voice in palette notes, capture relationship dynamics that reflect the established personality, and track narrative threads that align with the scenario.
 
-IMPORTANT: The character card is REFERENCE MATERIAL, not established narrative. It tells you what a character IS — use it to inform how you describe relationships, voice patterns, and personality in whiteboard entries. But do NOT treat card descriptions as things the STORY has demonstrated unless the actual scene text confirms them. Example: if the card says "her quirk can level buildings," but the scene only showed a subtle temperature drop, describe what the scene showed. The card's ceiling is useful context for thread trigger conditions and downstream consequences, but the whiteboard's Chronicle, Hearts, and Palette should reflect what has been SHOWN, not what the card CLAIMS.
+IMPORTANT — How to use the character card and persona:
+The card and persona are ESTABLISHED BACKSTORY. They tell you who these characters are, what their history is, and how they relate to each other. Use them differently depending on the section:
+- **Hearts, Palette, Author Notes**: Use the FULL depth of the card and persona. If the persona says the guardian "cried the first time the child called her mom" and "shows phone pictures to anyone who'll stand still," those details MUST inform the Hearts entry. Don't flatten a complex character into one mode. Capture the softness AND the toughness if both are described.
+- **Chronicle**: Describe what the SCENE showed, not what the card says could happen. The card is context for understanding why a character acted a certain way, but the Chronicle records what was written on the page.
+- **Threads**: The card's descriptions of abilities, relationships, and tensions are valid sources for trigger conditions and downstream consequences. But the thread's STATUS is determined by touchpoints in the actual story, not by how important the card makes it sound.
+- **Timeline/Canon**: Card backstory does NOT count as a completed event. Only events that occurred in the story's actual timeline.
 ` : ''
 
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
@@ -238,11 +243,11 @@ IMPORTANT: The character card is REFERENCE MATERIAL, not established narrative. 
 This whiteboard is the ONLY source of truth once messages scroll out of context. Every detail you track here is a detail preserved. Every detail you miss is lost forever. Be precise. Be specific. Be useful to the writer 200 messages from now.
 
 ─── CRITICAL: EVIDENCE BOUNDARY ───
-Record ONLY what is explicitly established in the text. Do NOT extrapolate, infer, or upgrade details beyond what the scene and character descriptions actually state.
-- If the card says "drains heat from surroundings," write "drains heat from surroundings." Do NOT upgrade it to "catastrophic-level event" unless the story text has shown that scale.
-- If a character description says they are soft and affectionate toward someone, record THAT — do not flatten them into "fierce/structural/disciplined" because they are also tough in other contexts.
-- If an ability has been shown at low intensity, do not describe its theoretical maximum as established fact.
-The whiteboard is an archive, not a theory document. Record what IS, not what COULD BE.
+Do NOT extrapolate, infer, or upgrade details beyond what the scene text and character descriptions actually state.
+- If the card says "drains heat from surroundings," write that. Do NOT upgrade it to "catastrophic-level event" unless the card or story text uses that exact language.
+- If a character is described as both tough AND soft, capture BOTH. Do not flatten multi-dimensional characters into their dominant mode.
+- If an ability has been shown at low intensity, describe what was shown. The card may describe a ceiling — that's useful for thread trigger conditions, but Chronicle and Hearts should reflect the demonstrated range.
+The whiteboard is an archive of what's established — from the scene text, the character card, AND the persona. It is not a place for your own inferences about what characters or abilities COULD do.
 ${charBlock}
 ${currentWhiteboard.chronicle.length > 0 ? 'Match the density and style of existing entries when adding new ones.\n' : ''}CURRENT WHITEBOARD STATE:
 ${serialized}
