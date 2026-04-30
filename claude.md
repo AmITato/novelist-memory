@@ -496,6 +496,47 @@ Both buttons auto-reject existing pending updates for the chat before re-running
 - `rerun_error` — something failed (no assistant message, gen failure, etc.)
 - Normal `pending_update` arrives when the updater finishes
 
+## Deduplication
+
+`applyDelta` in `whiteboard.ts` deduplicates all append-only sections to prevent duplicate entries from Lumia + sidecar overlap:
+
+| Section | Dedup strategy |
+|---|---|
+| **Chronicle** | By `id` — if a chronicle entry with the same id exists, merges into existing |
+| **Threads** | By `id` OR by `name` (case-insensitive) — merges into existing |
+| **Hearts** | By `id` OR by `from`→`to` pair (case-insensitive) — merges into existing |
+| **Palette.fragileDetails** | Normalized substring containment — exact match or one contains the other |
+| **Canon.completedEvents** | Normalized substring containment on the `event` string |
+| **Canon.butterflyLog** | Normalized substring containment on the `change` string |
+| **authorNotes** | Normalized substring containment |
+
+This prevents the most common duplication pattern: Lumia pins a detail via `update_whiteboard` during her Memory Forge, then the sidecar updater produces an overlapping entry post-generation.
+
+## Lumia/sidecar ownership split
+
+The primary model (Lumia) and the sidecar updater (Hermes) have different responsibilities:
+
+| Section | Sidecar | Lumia |
+|---|---|---|
+| **Chronicle** | ✅ Creates entries from prose | ❌ Does not add — can `update` to correct stale entries |
+| **Threads** | ✅ Basic tracking | ✅ Status changes, new SEEDED threads, trigger/consequence updates |
+| **Hearts** | ✅ Structurally correct | ✅ Adds emotional texture, sensory memories, relationship nuance |
+| **Palette** | ❌ Doesn't touch | ✅ Voice notes, sensory signatures, fragile details |
+| **Canon** | ✅ Basic timeline | ✅ Butterfly log, deviation analysis |
+| **Author Notes** | ❌ Blocked in prompt | ✅ Exclusively Lumia's — must be in her voice/personality |
+
+The sidecar prompt explicitly says "DO NOT GENERATE" for Author Notes. The sidecar is framed as "Lumia's memory keeper" — it writes with warmth and texture matching her sensibilities, not as a clinical analyst.
+
+## Whiteboard injection placement
+
+The interceptor injects the whiteboard **before the first user/assistant message** (i.e., before chat history starts), not at the end of the message array. This is critical for voice preservation — when the whiteboard sat at the bottom of context (closest to generation), its structured analytical format flattened the primary model's CoT voice. Moving it above chat history makes it background reference material rather than a final directive, preserving the model's personality in its thinking phase.
+
+```
+System prompts → CoT instructions → [WHITEBOARD HERE] → Chat history → User nudge → Generation
+```
+
+The interceptor runs at priority 30 (before most other interceptors).
+
 ## Not yet implemented
 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
