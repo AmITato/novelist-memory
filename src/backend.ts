@@ -439,9 +439,10 @@ spindle.on('GENERATION_STARTED', async (payload) => {
   const chatId = payload.chatId
   if (!chatId) return
 
-  const config = await getConfig()
-  if (!config.enabled) return
-
+  // Regen rewind runs regardless of config.enabled — if snapshots exist,
+  // the whiteboard must be rewound before the new generation. The enabled
+  // toggle controls LLM context injection and the updater pipeline, not
+  // whether versioning/rewind works.
   const preState = await getPreMessageState(chatId, payload.targetMessageId!)
   if (preState) {
     const rewound = structuredClone(preState)
@@ -473,9 +474,6 @@ spindle.on('GENERATION_STARTED', async (payload) => {
     return
   }
 
-  const config = await getConfig()
-  if (!config.enabled) return
-
   let chatId = p.chatId
   if (!chatId) {
     try {
@@ -484,16 +482,30 @@ spindle.on('GENERATION_STARTED', async (payload) => {
     } catch { /* ignore */ }
   }
 
-  if (!chatId) return
+  if (!chatId) {
+    // Still clean up state even without a chatId
+    activeGenerationMessageId = null
+    activeGenerationIsRegen = false
+    activeGenerationType = null
+    pendingDirectDeltas = []
+    return
+  }
 
   spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
 
-  try {
-    await processGenerationEnd(chatId, p.messageId, userId)
-  } catch (err) {
-    spindle.log.error(`[NovelistMemory] Background processing failed: ${err}`)
+  // Updater pipeline (quiet gen + archival) only runs when enabled
+  const config = await getConfig()
+  if (config.enabled) {
+    try {
+      await processGenerationEnd(chatId, p.messageId, userId)
+    } catch (err) {
+      spindle.log.error(`[NovelistMemory] Background processing failed: ${err}`)
+    }
   }
 
+  // Snapshot creation always runs — if the model called update_whiteboard,
+  // those mutations need to be versioned regardless of the enabled toggle.
+  // This is what makes swipe-back restore and regen rewind work.
   try {
     const messageId = p.messageId ?? activeGenerationMessageId
     if (messageId) {
@@ -522,9 +534,9 @@ spindle.on('GENERATION_STARTED', async (payload) => {
 // ─── Swipe Navigation ───────────────────────────────────────────────────────
 
 spindle.on('MESSAGE_SWIPED', async (payload) => {
-  const config = await getConfig()
-  if (!config.enabled) return
-
+  // Snapshot restore runs regardless of config.enabled — if a snapshot
+  // exists for this swipe, the whiteboard should reflect it. The enabled
+  // toggle controls context injection, not versioning.
   if (payload.action !== 'navigated') return
 
   const chatId = payload.chatId
