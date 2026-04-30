@@ -162,12 +162,18 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
   if (payload.toolName !== 'recall_scene' && payload.toolName !== 'recall_by_range') return
 
-  // Determine chat ID from context or active chat
+  // Determine chat ID — pass userId for operator-scoped extensions
   let chatId: string | undefined
   try {
-    const active = await spindle.chats.getActive()
+    const active = await (spindle.chats.getActive as Function)(userId)
     chatId = active?.id
-  } catch { /* ignore */ }
+  } catch {
+    // Fallback without userId
+    try {
+      const active = await spindle.chats.getActive()
+      chatId = active?.id
+    } catch { /* ignore */ }
+  }
 
   if (!chatId) {
     return 'Unable to determine the active chat. Make sure a chat is open.'
