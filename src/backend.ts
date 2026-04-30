@@ -447,7 +447,9 @@ spindle.on('GENERATION_STARTED', async (payload) => {
     const rewound = structuredClone(preState)
     rewound.chatId = chatId
     await saveWhiteboard(rewound)
-    await removeSnapshotsForMessage(chatId, payload.targetMessageId!)
+    // Don't remove old snapshots — they belong to previous swipes that the user
+    // might navigate back to. The new generation will create a fresh snapshot
+    // with a different swipeId that won't collide.
     spindle.log.info(`[NovelistMemory] Regen rewind: restored pre-message state for ${payload.targetMessageId}`)
 
     spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewound } })
