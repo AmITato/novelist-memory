@@ -292,6 +292,8 @@ This is handled by `resolveBackgroundConnectionId()` in `config.ts`. userId is t
 | `snapshotRetentionMessages` | `10` | Keep latest snapshot per message for this many recent messages |
 | `snapshotRetentionAllSwipes` | `1` | Keep all swipe snapshots for the last N messages |
 | `includeCharacterContext` | `true` | Send active character card + persona to the sidecar updater for richer entries |
+| `injectOnImpersonate` | `false` | Include whiteboard in context when generating impersonate (user-side) messages |
+| `updaterTemperature` | `0.3` | Temperature for the sidecar updater quiet gen (0.0–1.0). Lower = more precise JSON, higher = richer narrative entries |
 | `compactionThreshold` | `100` | Chronicle entries before compaction triggers |
 | `auditIntervalMessages` | `40` | Messages between full whiteboard audits |
 
@@ -303,10 +305,11 @@ Single drawer tab ("Novelist Memory") with four sub-tabs:
 - **Recall** — Manual intern query interface. Textarea for natural language queries, results displayed with source info, annotations, and expandable full scenes.
 - **Archive** — Stats dashboard: total archived messages, total tokens, character appearance counts, emotional register breakdown. Refresh button.
 - **Settings** — Full configuration form with:
-  - General: Enabled toggle, Auto-Commit toggle, Use Sidecar toggle
+  - General: Enabled toggle, Auto-Commit toggle, Use Sidecar toggle, Include Character Context toggle, Inject on Impersonate toggle
   - Context Window: Sliding window size, token budget, review window (seconds)
   - Maintenance: Compaction threshold, audit interval
-  - Model Connections: Intern and updater connection ID overrides (text fields)
+  - Model Connections: Intern and updater connection ID dropdowns, updater temperature slider (0.0–1.0)
+  - Debug: Re-run Updater buttons (Reset to Pre / Keep Current) for A/B testing sidecar models
   - Danger Zone: Reset whiteboard button with confirmation
 
 Settings save immediately on change (no save button needed). Green "✓ Settings saved" banner appears briefly on each change.
@@ -415,7 +418,7 @@ The file `cot_phase_novelist_memory.md` contains the full integration guide for 
 9. **Inline function calling** — `recall_by_range`, `recall_scene`, and `update_whiteboard` use `inline_available: true` so the primary model can call them mid-generation during its thinking/planning phase without Council.
 10. **Calibration bank for prompt quality** — Two-layer calibration: default structural examples (generic characters, always available) + per-chat story-specific examples (override defaults when sparse). Examples phase out once the whiteboard fills past threshold.
 11. **Adaptive Canon mode** — Updater prompt detects adaptation vs original fiction from existing Canon entries and adjusts guidance accordingly.
-12. **Impersonate skip** — `GENERATION_STARTED` and `GENERATION_ENDED` check `generationType === 'impersonate'` and skip all processing. Impersonate generates user-side messages, not narrative content.
+12. **Impersonate handling** — `GENERATION_STARTED` and `GENERATION_ENDED` check `generationType === 'impersonate'` and skip updater processing and snapshot creation. Whiteboard injection (context handler + interceptor) is gated by the `injectOnImpersonate` config toggle (default false). When enabled, the model generating the user-side message sees the whiteboard for continuity; the sidecar never processes impersonate output regardless.
 13. **Snapshot preservation on regen** — Old swipe snapshots are NOT deleted during regen rewind. The user can swipe back to a previous response and the whiteboard restores correctly.
 14. **Blank fork on missing snapshots** — When forking to a point with no snapshot data, the whiteboard starts blank rather than copying stale state from the parent's current position.
 15. **`config.enabled` controls injection, not versioning** — The master toggle gates two things: (1) whiteboard injection into LLM context (context handler + interceptor), and (2) the background updater pipeline in `GENERATION_ENDED`. It does NOT gate snapshot creation, regen rewind, swipe restore, or the `update_whiteboard` tool. This means versioning is always safe even when the user is testing with injection disabled.
