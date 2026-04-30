@@ -144,7 +144,7 @@ Example calls I might make:
 ```json
 update_whiteboard({
   "palette": {
-    "fragileDetails": ["Character taps their rings on surfaces when thinking — frequency increases with anxiety"]
+    "fragileDetails": ["Magda opens the locked drawer with her left hand — wrong hand for a right-handed person. Deliberate misdirection or habit from an old injury."]
   }
 })
 ```
@@ -154,10 +154,10 @@ update_whiteboard({
 update_whiteboard({
   "threads": {
     "update": [{
-      "id": "thr_coffee_parallel",
+      "id": "thr_missing_month",
       "status": "ACTIVE",
-      "lastTouched": "Day 1, Scene 4",
-      "summary": "Both characters cradle coffee mugs identically — observed by a third party for the first time"
+      "lastTouched": "Night 4, Scene 2",
+      "summary": "Sable's alibi cracked — a dock worker mentioned seeing her during the dates she claimed she was traveling. Second touchpoint confirms the gap is real."
     }]
   }
 })
@@ -168,10 +168,10 @@ update_whiteboard({
 update_whiteboard({
   "hearts": {
     "update": [{
-      "id": "hrt_rival_to_oc",
-      "status": "Existential threat → grudging fixation. Can't stop watching.",
-      "sensoryMemories": ["The moment her attack absorbed his — his palms went dry for the first time"],
-      "unresolved": ["Whether the suppression is fear or something else"]
+      "id": "hrt_ren_to_cassia",
+      "status": "Ex-partners, 3 years cold — but she finished his sentence tonight and neither of them corrected it.",
+      "sensoryMemories": ["The sound of her keyring as she left — three keys and a brass bell. Same sound as before."],
+      "unresolved": ["Whether the sentence-finishing was muscle memory or something reopening."]
     }]
   }
 })
