@@ -77,9 +77,10 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
   if (delta.chronicle) {
     if (delta.chronicle.add) {
       for (const entry of delta.chronicle.add) {
-        entry.charactersPresent ??= []
+        entry.charactersPresent = Array.isArray(entry.charactersPresent) ? entry.charactersPresent : entry.charactersPresent ? [entry.charactersPresent as unknown as string] : []
         entry.emotionalStates ??= {}
         entry.sensoryContext ??= ''
+        entry.verbatimDialogue = Array.isArray(entry.verbatimDialogue) ? entry.verbatimDialogue : entry.verbatimDialogue ? [entry.verbatimDialogue as unknown as string] : []
       }
       updated.chronicle.push(...delta.chronicle.add)
     }
@@ -95,10 +96,12 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
     if (delta.threads.add) {
       // Backfill optional array fields the model may omit — the tool schema
       // doesn't mark them required, but the serializer and type expect arrays.
+      // Also normalize string→array: models sometimes return a bare string
+      // instead of a single-element array.
       for (const thread of delta.threads.add) {
-        thread.dependencies ??= []
-        thread.triggerConditions ??= []
-        thread.downstreamConsequences ??= []
+        thread.dependencies = Array.isArray(thread.dependencies) ? thread.dependencies : thread.dependencies ? [thread.dependencies as unknown as string] : []
+        thread.triggerConditions = Array.isArray(thread.triggerConditions) ? thread.triggerConditions : thread.triggerConditions ? [thread.triggerConditions as unknown as string] : []
+        thread.downstreamConsequences = Array.isArray(thread.downstreamConsequences) ? thread.downstreamConsequences : thread.downstreamConsequences ? [thread.downstreamConsequences as unknown as string] : []
       }
       updated.threads.push(...delta.threads.add)
     }
@@ -113,11 +116,13 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
   if (delta.hearts) {
     if (delta.hearts.add) {
       // Backfill optional fields — same reason as threads above.
+      // Also normalize string→array: models sometimes return a bare string
+      // instead of a single-element array for these fields.
       for (const heart of delta.hearts.add) {
-        heart.keyKnowledge ??= []
+        heart.keyKnowledge = Array.isArray(heart.keyKnowledge) ? heart.keyKnowledge : heart.keyKnowledge ? [heart.keyKnowledge as unknown as string] : []
         heart.processing ??= ''
-        heart.sensoryMemories ??= []
-        heart.unresolved ??= []
+        heart.sensoryMemories = Array.isArray(heart.sensoryMemories) ? heart.sensoryMemories : heart.sensoryMemories ? [heart.sensoryMemories as unknown as string] : []
+        heart.unresolved = Array.isArray(heart.unresolved) ? heart.unresolved : heart.unresolved ? [heart.unresolved as unknown as string] : []
         heart.nextBeat ??= ''
       }
       updated.hearts.push(...delta.hearts.add)
@@ -250,12 +255,15 @@ export function serializeWhiteboard(wb: Whiteboard): string {
       sections.push(`${thread.name} — STATUS: ${thread.status}`)
       sections.push(`Last touched: ${thread.lastTouched}`)
       sections.push(`What: ${thread.summary}`)
-      if (thread.dependencies?.length > 0)
-        sections.push(`Dependencies: ${thread.dependencies.join('; ')}`)
-      if (thread.triggerConditions?.length > 0)
-        sections.push(`Triggers: ${thread.triggerConditions.join('; ')}`)
-      if (thread.downstreamConsequences?.length > 0)
-        sections.push(`Downstream: ${thread.downstreamConsequences.join('; ')}`)
+      const deps = Array.isArray(thread.dependencies) ? thread.dependencies : thread.dependencies ? [thread.dependencies] : []
+      if (deps.length > 0)
+        sections.push(`Dependencies: ${deps.join('; ')}`)
+      const triggers = Array.isArray(thread.triggerConditions) ? thread.triggerConditions : thread.triggerConditions ? [thread.triggerConditions] : []
+      if (triggers.length > 0)
+        sections.push(`Triggers: ${triggers.join('; ')}`)
+      const downstream = Array.isArray(thread.downstreamConsequences) ? thread.downstreamConsequences : thread.downstreamConsequences ? [thread.downstreamConsequences] : []
+      if (downstream.length > 0)
+        sections.push(`Downstream: ${downstream.join('; ')}`)
       sections.push('')
     }
   }
@@ -266,13 +274,16 @@ export function serializeWhiteboard(wb: Whiteboard): string {
     for (const heart of wb.hearts) {
       sections.push(`${heart.from} → ${heart.to}:`)
       sections.push(`  Status: ${heart.status}`)
-      if (heart.keyKnowledge?.length > 0)
-        sections.push(`  Key knowledge: ${heart.keyKnowledge.join('; ')}`)
+      const keyKnowledge = Array.isArray(heart.keyKnowledge) ? heart.keyKnowledge : heart.keyKnowledge ? [heart.keyKnowledge] : []
+      if (keyKnowledge.length > 0)
+        sections.push(`  Key knowledge: ${keyKnowledge.join('; ')}`)
       if (heart.processing) sections.push(`  Processing: ${heart.processing}`)
-      if (heart.sensoryMemories?.length > 0)
-        sections.push(`  Sensory memories: ${heart.sensoryMemories.join('; ')}`)
-      if (heart.unresolved?.length > 0)
-        sections.push(`  Unresolved: ${heart.unresolved.join('; ')}`)
+      const sensoryMemories = Array.isArray(heart.sensoryMemories) ? heart.sensoryMemories : heart.sensoryMemories ? [heart.sensoryMemories] : []
+      if (sensoryMemories.length > 0)
+        sections.push(`  Sensory memories: ${sensoryMemories.join('; ')}`)
+      const unresolved = Array.isArray(heart.unresolved) ? heart.unresolved : heart.unresolved ? [heart.unresolved] : []
+      if (unresolved.length > 0)
+        sections.push(`  Unresolved: ${unresolved.join('; ')}`)
       if (heart.nextBeat) sections.push(`  Next beat: ${heart.nextBeat}`)
       sections.push('')
     }
