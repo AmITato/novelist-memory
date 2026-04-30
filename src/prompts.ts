@@ -51,20 +51,19 @@ const DEFAULT_CHRONICLE = `[Day 1, 07:15, Apartment Kitchen, 3rd Floor] | Charac
 B woke A with a door-kick and burnt breakfast. Apartment smelled like scorched oil and dark roast. A's ambient tell was contracted tight — warm room meant content sleep. B masked pride behind aggression: pressed uniform on the door handle, insults layered over care. Key callback detail: B can't cook but plates the results with zero shame; A can cook, which B considers a personal affront. Emotional register: aggressive domesticity.`
 
 const DEFAULT_THREAD = `Name: THE HIDDEN ABILITY — A's Deception
-Status: ACTIVE (load-bearing)
-Last touched: Day 1, Scene 3
-Summary: A's ability cannot be suppressed by the authority figure's nullification power. A fakes compliance — suppresses visible effects, mimics discomfort. Deception taught by guardian B.
+Status: SEEDED
+Last touched: Day 1, Scene 1
+Summary: A's ability appears to have properties beyond what's been publicly shown. Guardian B's behavior during the morning routine hints at awareness of a deeper layer. Only one touchpoint so far — status remains SEEDED until a second scene develops this thread.
 Dependencies:
-  - The group's threat assessment of A assumes the authority figure can shut A down
-  - Rival C's coping mechanism ("teacher can leash A") relies on this being true
+  - The group's threat assessment of A (not yet established)
 Trigger conditions:
-  - Emotional spike too sudden to fake (ambush, threat to someone A cares about)
-  - Authority figure activating nullification while A is mid-use (timing conflict)
-  - Sustained observation — noticing A's "recovery" is instantaneous vs others' gradual return
+  - Authority figure testing A's ability directly (first real assessment)
+  - Emotional spike forcing an involuntary display beyond the passive baseline
+  - Sustained observation — someone noticing inconsistencies between A's claimed limits and actual behavior
 Downstream consequences:
-  - Authority figure: trust violation, professional crisis (taught with false data)
-  - Rival C: coping mechanism collapses
-  - Organization: reclassification, increased monitoring`
+  - Authority figure: trust violation if deception is discovered
+  - Organization: reclassification, increased monitoring
+  - Rival dynamics: other characters' coping strategies may rely on false assumptions about A's limits`
 
 const DEFAULT_HEART = `B → A:
   Status: Guardian-ward. The axis. Non-negotiable anchor.
@@ -127,7 +126,7 @@ export function buildUpdatePrompt(
     : ''
 
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats.
-Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor. Include verbatim dialogue ONLY when exact wording matters for future callbacks. ALWAYS include sourceMessageRange.
+Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
 
 Entry cadence — NOT every message. Only when:
 • Location or time changes
@@ -191,7 +190,7 @@ DO: Track fragile details as they emerge — the unconscious habits, the backgro
     ? `CANON — Timeline and source material tracking (ADAPTATION MODE detected).
 This story is set in or adapting an existing universe. Track:
 • timelinePosition: Where in the source timeline, using arc numbers/names if applicable.
-• completedEvents: Source events that have occurred (with deviations noted).
+• completedEvents: Major SOURCE MATERIAL events that have occurred in-story (with deviations noted). These are arc-level canon beats (e.g., "USJ Attack," "Sports Festival"), NOT scene-level actions like "character ate breakfast." If no major canon event has occurred yet, leave this empty.
 • upcomingEvents: Source events approaching, with what foreshadowing is needed NOW and how the OC/divergence changes them.
 • butterflyLog: Every divergence from source and its projected ripple effects. Each entry = 1-2 sentences with specific projected consequences.
 
@@ -228,6 +227,8 @@ ${characterContext.scenario ? `Scenario: ${characterContext.scenario}` : ''}
 ${characterContext.persona ? `User Persona: ${characterContext.persona}` : ''}
 
 Use this context to write richer, more character-specific whiteboard entries. Match the character's voice in palette notes, capture relationship dynamics that reflect the established personality, and track narrative threads that align with the scenario.
+
+IMPORTANT: The character card is REFERENCE MATERIAL, not established narrative. It tells you what a character IS — use it to inform how you describe relationships, voice patterns, and personality in whiteboard entries. But do NOT treat card descriptions as things the STORY has demonstrated unless the actual scene text confirms them. Example: if the card says "her quirk can level buildings," but the scene only showed a subtle temperature drop, describe what the scene showed. The card's ceiling is useful context for thread trigger conditions and downstream consequences, but the whiteboard's Chronicle, Hearts, and Palette should reflect what has been SHOWN, not what the card CLAIMS.
 ` : ''
 
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
@@ -289,7 +290,9 @@ Respond with ONLY a valid JSON object matching this schema:
   "authorNotes": { "add": ["..."], "remove": [index_numbers] }
 }
 
-Generate unique IDs using the prefixes shown (chr_, thr_, hrt_) followed by a short descriptor. For updates, reference the existing ID.`
+STRICT SCHEMA RULES:
+- All fields shown as [...] MUST be JSON arrays, even for a single value. Use ["single item"], never a bare string.
+- Generate unique IDs using the prefixes shown (chr_, thr_, hrt_) followed by a short descriptor. For updates, reference the existing ID.`
 }
 
 // ─── Archive Metadata Extraction Prompt ─────────────────────────────────────
