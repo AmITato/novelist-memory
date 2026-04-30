@@ -1,3 +1,4 @@
+import { countTokens } from './tokens'
 import type { WhiteboardDelta, PendingUpdate, ArchivedMessage } from './types'
 import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates, getCalibrationBank } from './whiteboard'
 import { archiveMessages, getArchive } from './archive'
@@ -252,7 +253,7 @@ async function checkAndArchiveMessages(chatId: string, userId?: string): Promise
       emotionalRegister: metadata.emotionalRegister,
       activeThreads: metadata.activeThreads,
       content: msg.content,
-      tokenEstimate: Math.ceil(msg.content.length / 4), // rough estimate, refined later
+      tokenEstimate: (await countTokens(msg.content, userId)).count,
     })
   }
 

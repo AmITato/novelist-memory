@@ -4,6 +4,7 @@ import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
 import { getArchiveStats, getArchivedMessagesByRange } from './archive'
 import { createSnapshot, getSnapshotForSwipe, getPreMessageState, getLatestSnapshotForMessage, getSnapshots, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
+import { countTokens } from './tokens'
 import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate } from './types'
 import type { ToolInvocationPayloadDTO } from 'lumiverse-spindle-types'
 
@@ -83,10 +84,10 @@ spindle.registerInterceptor(async (messages, context) => {
 
   const serialized = serializeWhiteboard(whiteboard)
 
-  // Token budget check — rough estimate at 4 chars/token
-  const estimatedTokens = Math.ceil(serialized.length / 4)
-  if (estimatedTokens > config.whiteboardTokenBudget) {
-    spindle.log.warn(`Whiteboard exceeds token budget (${estimatedTokens} > ${config.whiteboardTokenBudget}). Consider compaction.`)
+  // Token budget check — uses real tokenizer when available, falls back to char/4
+  const tokenResult = await countTokens(serialized)
+  if (tokenResult.count > config.whiteboardTokenBudget) {
+    spindle.log.warn(`Whiteboard exceeds token budget (${tokenResult.count} > ${config.whiteboardTokenBudget}, tokenizer: ${tokenResult.tokenizer}). Consider compaction.`)
     // Still inject — but warn. Future: auto-compact.
   }
 
@@ -717,6 +718,20 @@ spindle.onFrontendMessage(async (raw, userId) => {
       if (!chatId || !query) return
       const results = await queryIntern(chatId, { query, maxResults: 3 }, userId)
       spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results } }, userId)
+      break
+    }
+
+    case 'get_whiteboard_tokens': {
+      const chatId = payload.data?.chatId as string
+      if (!chatId) return
+      const wb = await getWhiteboard(chatId)
+      const serialized = serializeWhiteboard(wb)
+      const result = await countTokens(serialized, userId)
+      const config = await getConfig()
+      spindle.sendToFrontend({
+        type: 'whiteboard_tokens',
+        data: { chatId, tokens: result.count, approximate: result.approximate, tokenizer: result.tokenizer, budget: config.whiteboardTokenBudget },
+      }, userId)
       break
     }
   }

@@ -36,6 +36,7 @@ novelist-memory/
     archive.ts          # Archive CRUD, metadata indexing, search helpers
     intern.ts           # Intern retrieval logic — index search, scene annotation
     updater.ts          # Post-generation pipeline — whiteboard updates, message archival
+    tokens.ts           # Token counting wrapper — spindle.tokens.countText with char/4 fallback
     prompts.ts          # All LLM prompt templates (update, metadata extraction, intern)
   dist/
     backend.js          # Built backend bundle
@@ -441,7 +442,7 @@ The file `cot_phase_novelist_memory.md` contains the full integration guide for 
 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
 - **Full audit** — every N messages, cross-check whiteboard against archive for drift
-- **Token counting** — using rough char/4 estimates; could use `spindle.tokens.countText()` for accuracy
+- ~~**Token counting**~~ — implemented via `src/tokens.ts`; uses `spindle.tokens.countText()` with char/4 fallback
 - **Connection picker UI** — dropdown listing available connections instead of raw ID text fields
 - **Calibration bank UI** — frontend interface for populating per-chat calibration examples (currently requires manual JSON editing)
 - **`removeSnapshotsForMessage` cleanup** — function exists in `snapshots.ts` but is no longer called. Consider removing or repurposing for manual cleanup.
