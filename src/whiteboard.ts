@@ -327,7 +327,7 @@ export function serializeWhiteboard(wb: Whiteboard): string {
     || wb.canon.butterflyLog.length > 0
 
   if (hasCanon) {
-    sections.push('── CANON ──')
+    sections.push('── TIMELINE / CANON ──')
     if (wb.canon.timelinePosition)
       sections.push(`Timeline position: ${wb.canon.timelinePosition}`)
     if (wb.canon.completedEvents.length > 0) {

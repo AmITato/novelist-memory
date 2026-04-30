@@ -179,7 +179,7 @@ spindle.registerTool({
 spindle.registerTool({
   name: 'update_whiteboard',
   display_name: 'Update Whiteboard',
-  description: 'Directly edit the narrative whiteboard. Use this when you notice something important has changed mid-scene — a relationship shift, a thread resolving, a new plot seed, a continuity detail worth tracking — and you want to record it NOW rather than waiting for the post-generation updater. Pass a delta object with only the sections you want to change. Sections: chronicle (scene beats), threads (narrative arcs), hearts (relationships), palette (voice/style), canon (timeline/events), authorNotes (self-coaching). For chronicle/threads/hearts, use "add" for new entries (with id prefixes chr_, thr_, hrt_) and "update" for modifying existing entries by id.',
+  description: 'Directly edit the narrative whiteboard. Use this when you notice something important has changed mid-scene — a relationship shift, a thread resolving, a new plot seed, a continuity detail worth tracking — and you want to record it NOW rather than waiting for the post-generation updater. Pass a delta object with only the sections you want to change. Sections: chronicle (scene beats), threads (narrative arcs), hearts (relationships), palette (voice/style), canon (timeline/canon tracking), authorNotes (self-coaching). For chronicle/threads/hearts, use "add" for new entries (with id prefixes chr_, thr_, hrt_) and "update" for modifying existing entries by id.',
   parameters: {
     type: 'object',
     properties: {
@@ -280,7 +280,7 @@ spindle.registerTool({
       },
       canon: {
         type: 'object',
-        description: 'Update Canon (timeline, events, butterfly log). completedEvents and butterflyLog append; upcomingEvents replaces.',
+        description: 'Update Timeline/Canon (story progression, events, butterfly log). completedEvents and butterflyLog append; upcomingEvents replaces.',
         properties: {
           timelinePosition: { type: 'string' },
           completedEvents: { type: 'array', items: { type: 'object', properties: { event: { type: 'string' }, deviations: { type: 'string' }, foreshadowingNeeded: { type: 'string' } }, required: ['event'] } },

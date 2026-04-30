@@ -188,23 +188,24 @@ DO: Be specific enough that someone could write the character from the voice not
 DO: Track fragile details as they emerge — the unconscious habits, the background objects, the tiny recurring things.${sparse.palette ? formatCalibrationExamples('PALETTE', calibrationBank?.palette, DEFAULT_PALETTE) : ''}`
 
   const canonGuidance = adaptation
-    ? `CANON — Timeline and source material tracking (ADAPTATION MODE detected).
+    ? `TIMELINE / CANON — Source material tracking (ADAPTATION MODE detected).
 This story is set in or adapting an existing universe. Track:
 • timelinePosition: Where in the source timeline, using arc numbers/names if applicable.
-• completedEvents: Major SOURCE MATERIAL events that have occurred in-story (with deviations noted). These are arc-level canon beats (e.g., "USJ Attack," "Sports Festival"), NOT scene-level actions like "character ate breakfast." If no major canon event has occurred yet, leave this empty.
+• completedEvents: Major SOURCE MATERIAL events that have occurred in-story (with deviations noted). These are arc-level canon beats (e.g., a major battle, a tournament, a political upheaval), NOT scene-level actions like "character ate breakfast." If no major canon event has occurred yet, leave this empty.
 • upcomingEvents: Source events approaching, with what foreshadowing is needed NOW and how the OC/divergence changes them.
 • butterflyLog: Every divergence from source and its projected ripple effects. Each entry = 1-2 sentences with specific projected consequences.
 
-DON'T: Log divergences without projected consequences. "OC exists" is not a butterfly entry. "OC exists, which changes team pairings for every exercise and shifts the threat assessment calculus for the authority figure" IS.
-DO: Flag foreshadowing needs on upcoming events — what needs to be seeded in the current scene to make a future event land.${sparse.canon ? formatCalibrationExamples('CANON', calibrationBank?.canon, DEFAULT_CANON) : ''}`
-    : `CANON — Timeline tracking (ORIGINAL FICTION MODE).
-No source material detected. Track:
-• timelinePosition: Current in-story date/time, story phase, or arc label.
-• completedEvents: Major events that have concluded (for continuity reference).
-• upcomingEvents: Planned or foreshadowed events that need setup.
-• butterflyLog: Use ONLY if the story involves a character whose actions create traceable ripple effects (time travel, dimensional shifts, etc.). Otherwise leave empty.
+DON'T: Log divergences without projected consequences. "OC exists" is not a butterfly entry. "OC exists, which changes team dynamics and shifts the authority's calculus" IS.
+DON'T: Put scene-level actions in completedEvents. "Character woke up" is not a completed event — it's a Chronicle entry. CompletedEvents are ARC-LEVEL milestones only.
+DO: Flag foreshadowing needs on upcoming events — what needs to be seeded in the current scene to make a future event land.${sparse.canon ? formatCalibrationExamples('TIMELINE / CANON', calibrationBank?.canon, DEFAULT_CANON) : ''}`
+    : `TIMELINE — Story progression tracking (ORIGINAL FICTION MODE).
+No source material detected. This section is a simple timeline tracker.
+• timelinePosition: Current in-story date/time, story phase, or arc label. Update this every exchange.
+• completedEvents: Major story milestones that have concluded — arc-level beats, not individual actions. "The heist succeeded" is a completed event. "Character walked to the store" is not. Leave empty until a real milestone occurs.
+• upcomingEvents: Events that have been foreshadowed, planned by characters, or set in motion. Include what foreshadowing still needs to be planted to make them land.
+• butterflyLog: Use ONLY if the story involves cascading cause-and-effect that needs explicit tracking (time travel, political scheming, butterfly effects). Otherwise leave empty.
 
-Keep this section lightweight for original fiction — it's a timeline, not a source-tracking system.${sparse.canon ? formatCalibrationExamples('CANON', calibrationBank?.canon, DEFAULT_CANON) : ''}`
+Keep this section lightweight — update timelinePosition every exchange, track upcoming events when they're seeded, and only log completedEvents for genuine milestones.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
 
   const authorNotesGuidance = `AUTHOR NOTES — Craft coaching from you to future-you.
 1-2 sentences each. Punchy. Actionable. These are CRAFT notes, not story notes.
