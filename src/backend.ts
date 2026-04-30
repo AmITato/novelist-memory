@@ -557,6 +557,12 @@ async function applyRewind(chatId: string, state: Whiteboard, reason: string): P
   // Snapshot creation always runs — if the model called update_whiteboard,
   // those mutations need to be versioned regardless of the enabled toggle.
   // This is what makes swipe-back restore and regen rewind work.
+  //
+  // IMPORTANT: The updater pipeline saves its delta as a PENDING update
+  // (not yet committed to the whiteboard). The snapshot needs to capture
+  // the whiteboard state AS IF the pending delta were applied, so that
+  // swipe-back restores the correct state. We speculatively apply any
+  // pending deltas from this generation cycle to the snapshot's state.
   try {
     const messageId = p.messageId ?? activeGenerationMessageId
     if (messageId) {
@@ -565,8 +571,19 @@ async function applyRewind(chatId: string, state: Whiteboard, reason: string): P
       const msg = msgIndex >= 0 ? messages[msgIndex] as { id: string, swipe_id: number } : null
 
       if (msg) {
-        const finalState = await getWhiteboard(chatId)
+        let finalState = await getWhiteboard(chatId)
+
+        // Speculatively apply pending deltas so the snapshot captures
+        // the post-updater state, not the pre-updater state
         const allDeltas = [...pendingDirectDeltas]
+        const pendingList = await getPendingUpdates(chatId)
+        for (const pending of pendingList) {
+          if (pending.status === 'pending' && pending.sourceMessageId === messageId) {
+            finalState = applyDelta(finalState, pending.changes)
+            allDeltas.push(pending.changes)
+          }
+        }
+
         const source = allDeltas.length > 0 ? 'combined' as const : 'updater' as const
         await createSnapshot(chatId, messageId, msg.swipe_id, msgIndex, finalState, allDeltas, source, preGenerationState ?? undefined)
         await pruneSnapshots(chatId)
