@@ -442,6 +442,26 @@ The file `cot_phase_novelist_memory.md` contains the full integration guide for 
 
 **Consequence:** Tool handlers cannot call APIs that require userId (like `spindle.chats.getActive()` on operator-scoped extensions). Use the context handler to capture state before tools execute.
 
+## Debug: Re-run Updater
+
+The Settings tab has a Debug section with two buttons for A/B testing different sidecar models against the same exchange:
+
+- **Re-run (Reset to Pre)** — Rewinds whiteboard to its state before the last sidecar run (using the latest snapshot's `preState`), auto-rejects any pending updates, then re-fires `processGenerationEnd` against the chat's current latest exchange. Clean A/B test: swap the Updater Connection, hit this button, compare the pending update against the previous model's output.
+
+- **Re-run (Keep Current)** — Re-fires the updater against the current whiteboard state without rewinding. Tests what a model would produce as a delta on top of existing entries (steady-state behavior testing).
+
+Both buttons auto-reject existing pending updates for the chat before re-running to avoid stacking multiple pending updates. The result arrives as a normal pending update through the existing approval flow.
+
+### Frontend message: `rerun_updater`
+- `data.chatId: string` — which chat to re-run for
+- `data.mode: 'reset_to_pre' | 'keep_current'` — whether to rewind first
+
+### Backend responses:
+- `rerun_pending_cleared` — old pending updates rejected, frontend clears its queue
+- `rerun_started` — updater quiet gen is in progress
+- `rerun_error` — something failed (no assistant message, gen failure, etc.)
+- Normal `pending_update` arrives when the updater finishes
+
 ## Not yet implemented
 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries

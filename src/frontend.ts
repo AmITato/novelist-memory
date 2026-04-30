@@ -895,6 +895,49 @@ export function setup(ctx: SpindleFrontendContext) {
 
     container.appendChild(modelSection)
 
+    // ─── Debug ─────────────────────────────────────────────────────
+
+    if (currentChatId) {
+      const debugSection = createSection('Debug', '')
+
+      const debugDesc = document.createElement('div')
+      debugDesc.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888); margin-bottom: 12px; line-height: 1.5;'
+      debugDesc.textContent = 'Re-run the updater sidecar against the current chat\'s latest exchange. Useful for A/B testing different sidecar models — change the Updater Connection above, then re-run.'
+      debugSection.appendChild(debugDesc)
+
+      const debugBtnRow = document.createElement('div')
+      debugBtnRow.style.cssText = 'display: flex; gap: 8px;'
+
+      const rerunResetBtn = document.createElement('button')
+      rerunResetBtn.className = 'novelist-btn novelist-btn-ghost'
+      rerunResetBtn.style.cssText = 'flex: 1;'
+      rerunResetBtn.textContent = '↻ Re-run (Reset to Pre)'
+      rerunResetBtn.title = 'Reset whiteboard to its state before the last sidecar run, then re-fire the updater. Clean A/B test.'
+      rerunResetBtn.onclick = () => {
+        rerunResetBtn.textContent = '⏳ Running...'
+        rerunResetBtn.disabled = true
+        rerunKeepBtn.disabled = true
+        ctx.sendToBackend({ type: 'rerun_updater', data: { chatId: currentChatId, mode: 'reset_to_pre' } })
+      }
+      debugBtnRow.appendChild(rerunResetBtn)
+
+      const rerunKeepBtn = document.createElement('button')
+      rerunKeepBtn.className = 'novelist-btn novelist-btn-ghost'
+      rerunKeepBtn.style.cssText = 'flex: 1;'
+      rerunKeepBtn.textContent = '↻ Re-run (Keep Current)'
+      rerunKeepBtn.title = 'Re-fire the updater against the current whiteboard state. Tests what the model would add on top of existing entries.'
+      rerunKeepBtn.onclick = () => {
+        rerunKeepBtn.textContent = '⏳ Running...'
+        rerunKeepBtn.disabled = true
+        rerunResetBtn.disabled = true
+        ctx.sendToBackend({ type: 'rerun_updater', data: { chatId: currentChatId, mode: 'keep_current' } })
+      }
+      debugBtnRow.appendChild(rerunKeepBtn)
+
+      debugSection.appendChild(debugBtnRow)
+      container.appendChild(debugSection)
+    }
+
     // ─── Danger Zone ──────────────────────────────────────────────────
 
     if (currentChatId) {
@@ -1144,6 +1187,31 @@ export function setup(ctx: SpindleFrontendContext) {
       case 'config_saved': {
         const data = payload.data as { config: Record<string, unknown> }
         currentConfig = data.config
+        break
+      }
+
+      case 'rerun_pending_cleared': {
+        const data = payload.data as { chatId: string }
+        if (data.chatId === currentChatId) {
+          pendingUpdates = []
+          renderDrawer()
+        }
+        break
+      }
+
+      case 'rerun_started': {
+        // The updater is running — the pending_update message will arrive
+        // when it finishes, which triggers the normal approval flow.
+        // No special handling needed here.
+        break
+      }
+
+      case 'rerun_error': {
+        const data = payload.data as { chatId: string, error: string }
+        if (data.chatId === currentChatId) {
+          // Re-render to reset button states
+          renderDrawer()
+        }
         break
       }
 

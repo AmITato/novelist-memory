@@ -1,4 +1,4 @@
-import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingUpdate, saveWhiteboard, createEmptyWhiteboard, applyDelta, savePendingUpdate } from './whiteboard'
+import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingUpdate, saveWhiteboard, createEmptyWhiteboard, applyDelta, savePendingUpdate, getPendingUpdates } from './whiteboard'
 import { queryIntern, formatInternResults } from './intern'
 import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
@@ -725,6 +725,71 @@ spindle.onFrontendMessage(async (raw, userId) => {
       if (!chatId || !query) return
       const results = await queryIntern(chatId, { query, maxResults: 3 }, userId)
       spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results } }, userId)
+      break
+    }
+
+    case 'rerun_updater': {
+      const chatId = payload.data?.chatId as string
+      const mode = payload.data?.mode as 'reset_to_pre' | 'keep_current'
+      if (!chatId) return
+
+      spindle.log.info(`[NovelistMemory] Re-run updater requested for chat ${chatId} (mode: ${mode})`)
+
+      // Auto-reject any pending updates for this chat so we don't stack them
+      const pendingList = await getPendingUpdates(chatId)
+      for (const pending of pendingList) {
+        if (pending.status === 'pending') {
+          await rejectPendingUpdate(chatId, pending.id)
+          spindle.log.info(`[NovelistMemory] Auto-rejected pending update ${pending.id} before re-run`)
+        }
+      }
+      // Clear pending from frontend
+      spindle.sendToFrontend({ type: 'rerun_pending_cleared', data: { chatId } }, userId)
+
+      // Rewind whiteboard if requested
+      if (mode === 'reset_to_pre') {
+        const allSnaps = await getSnapshots(chatId)
+        if (allSnaps.length > 0) {
+          // Get the latest snapshot — its preState is what the whiteboard looked
+          // like before the last sidecar run
+          const latest = allSnaps[allSnaps.length - 1]
+          if (latest.preState) {
+            const rewound = structuredClone(latest.preState)
+            rewound.chatId = chatId
+            await saveWhiteboard(rewound)
+            spindle.log.info(`[NovelistMemory] Re-run: rewound to preState from snapshot ${latest.id}`)
+          } else {
+            // No preState on the latest snapshot — fall back to empty
+            await saveWhiteboard(createEmptyWhiteboard(chatId))
+            spindle.log.info(`[NovelistMemory] Re-run: no preState found, reset to empty`)
+          }
+        } else {
+          // No snapshots at all — reset to empty
+          await saveWhiteboard(createEmptyWhiteboard(chatId))
+          spindle.log.info(`[NovelistMemory] Re-run: no snapshots, reset to empty`)
+        }
+        // Notify frontend of the rewound state
+        const rewoundWb = await getWhiteboard(chatId)
+        spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rewoundWb } }, userId)
+        await refreshMacros(chatId)
+      }
+
+      // Find the latest message ID for processGenerationEnd
+      try {
+        const messages = await spindle.chat.getMessages(chatId)
+        const lastAssistant = [...messages].reverse().find((m: { role: string }) => m.role === 'assistant') as { id: string } | undefined
+        if (lastAssistant) {
+          spindle.sendToFrontend({ type: 'rerun_started', data: { chatId } }, userId)
+          await processGenerationEnd(chatId, lastAssistant.id, userId)
+          spindle.log.info(`[NovelistMemory] Re-run updater completed for chat ${chatId}`)
+        } else {
+          spindle.log.warn(`[NovelistMemory] Re-run: no assistant message found in chat ${chatId}`)
+          spindle.sendToFrontend({ type: 'rerun_error', data: { chatId, error: 'No assistant message found in chat' } }, userId)
+        }
+      } catch (err) {
+        spindle.log.error(`[NovelistMemory] Re-run updater failed: ${err}`)
+        spindle.sendToFrontend({ type: 'rerun_error', data: { chatId, error: String(err) } }, userId)
+      }
       break
     }
 
