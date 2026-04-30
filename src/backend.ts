@@ -53,6 +53,9 @@ spindle.registerContextHandler(async (context) => {
   if (!config.enabled) return context
   if (!chatId) return context
 
+  // Skip injection for impersonate unless the toggle is on
+  if (activeGenerationType === 'impersonate' && !config.injectOnImpersonate) return context
+
   const whiteboard = await getWhiteboard(chatId)
   const isEmpty = whiteboard.chronicle.length === 0
     && whiteboard.threads.length === 0
@@ -79,6 +82,9 @@ spindle.registerInterceptor(async (messages, context) => {
 
   const chatId = (context as { chatId?: string }).chatId
   if (!chatId) return messages
+
+  // Skip injection for impersonate unless the toggle is on
+  if (activeGenerationType === 'impersonate' && !config.injectOnImpersonate) return messages
 
   const whiteboard = await getWhiteboard(chatId)
   const isEmpty = whiteboard.chronicle.length === 0

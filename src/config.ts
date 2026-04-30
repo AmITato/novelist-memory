@@ -18,6 +18,7 @@ const DEFAULT_CONFIG: NovelistConfig = {
   snapshotRetentionAllSwipes: 1,
   includeCharacterContext: true,
   updaterTemperature: 0.3,
+  injectOnImpersonate: false,
 }
 
 /**

@@ -755,6 +755,7 @@ export function setup(ctx: SpindleFrontendContext) {
       compactionThreshold: number
       auditIntervalMessages: number
       updaterTemperature?: number
+      injectOnImpersonate?: boolean
     }
 
     const container = document.createElement('div')
@@ -812,6 +813,14 @@ export function setup(ctx: SpindleFrontendContext) {
       'Send the active character card and persona to the sidecar updater for richer, more character-specific whiteboard entries.',
       cfg.includeCharacterContext ?? true,
       (val) => saveField('includeCharacterContext', val)
+    ))
+
+    // Inject on impersonate toggle
+    generalSection.appendChild(makeToggleField(
+      'Inject on Impersonate',
+      'Include the whiteboard in context when generating impersonate (user-side) messages. Useful for maintaining continuity when writing as your character.',
+      cfg.injectOnImpersonate ?? false,
+      (val) => saveField('injectOnImpersonate', val)
     ))
 
     container.appendChild(generalSection)
