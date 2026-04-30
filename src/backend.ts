@@ -800,6 +800,12 @@ spindle.onFrontendMessage(async (raw, userId) => {
       // Find the latest message ID for processGenerationEnd
       try {
         const messages = await spindle.chat.getMessages(chatId)
+        // [DIAG] dump what getMessages returned for this chatId
+        spindle.log.info(`[NovelistMemory][DIAG] rerun getMessages(${chatId}) returned ${messages.length} messages`)
+        for (const m of messages) {
+          const msg = m as { id: string, role: string, content: string }
+          spindle.log.info(`[NovelistMemory][DIAG]   msg id=${msg.id} role=${msg.role} len=${msg.content?.length ?? 0} preview="${(msg.content ?? '').slice(0, 120).replace(/\n/g, '\\n')}"`)
+        }
         const lastAssistant = [...messages].reverse().find((m: { role: string }) => m.role === 'assistant') as { id: string } | undefined
         if (lastAssistant) {
           spindle.sendToFrontend({ type: 'rerun_started', data: { chatId } }, userId)

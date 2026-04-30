@@ -42,6 +42,12 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
   // Fetch recent messages for context
   const allMessages = await spindle.chat.getMessages(chatId)
   spindle.log.info(`[NovelistMemory] Got ${allMessages.length} messages for chat ${chatId}`)
+  // [DIAG] dump all messages from getMessages in updater context
+  spindle.log.info(`[NovelistMemory][DIAG] updateWhiteboard: ${allMessages.length} messages for chat ${chatId}`)
+  for (let i = 0; i < allMessages.length; i++) {
+    const m = allMessages[i] as { id: string, role: string, content: string }
+    spindle.log.info(`[NovelistMemory][DIAG]   [${i}] id=${m.id} role=${m.role} len=${m.content?.length ?? 0} preview="${(m.content ?? '').slice(0, 150).replace(/\n/g, '\\n')}"`)
+  }
   if (allMessages.length < 2) {
     spindle.log.info('[NovelistMemory] Not enough messages for whiteboard update (need at least 2)')
     return
@@ -98,6 +104,15 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
     }
   }
 
+  // [DIAG] dump whiteboard state and exchange content before prompt build
+  spindle.log.info(`[NovelistMemory][DIAG] whiteboard for ${chatId}: chronicle=${whiteboard.chronicle.length} threads=${whiteboard.threads.length} hearts=${whiteboard.hearts.length} notes=${whiteboard.authorNotes.length}`)
+  for (const c of whiteboard.chronicle) {
+    spindle.log.info(`[NovelistMemory][DIAG]   chronicle id=${c.id} summary="${(c.summary ?? '').slice(0, 120).replace(/\n/g, '\\n')}"`)
+  }
+  spindle.log.info(`[NovelistMemory][DIAG] lastUser id=${(lastUser as { id: string }).id} len=${lastUser.content?.length ?? 0} preview="${(lastUser.content ?? '').slice(0, 200).replace(/\n/g, '\\n')}"`)
+  spindle.log.info(`[NovelistMemory][DIAG] lastAssistant id=${(lastAssistant as { id: string }).id} len=${lastAssistant.content?.length ?? 0} preview="${(lastAssistant.content ?? '').slice(0, 200).replace(/\n/g, '\\n')}"`)
+  spindle.log.info(`[NovelistMemory][DIAG] messageRange=${JSON.stringify(messageRange)} contextLen=${recentContext.length}`)
+
   const updatePrompt = buildUpdatePrompt(
     whiteboard,
     lastUser.content,
@@ -107,6 +122,11 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
     calibrationBank,
     characterContext,
   )
+
+  // [DIAG] log prompt size and edges
+  spindle.log.info(`[NovelistMemory][DIAG] prompt len=${updatePrompt.length}`)
+  spindle.log.info(`[NovelistMemory][DIAG] prompt FIRST 500: "${updatePrompt.slice(0, 500).replace(/\n/g, '\\n')}"`)
+  spindle.log.info(`[NovelistMemory][DIAG] prompt LAST 500: "${updatePrompt.slice(-500).replace(/\n/g, '\\n')}"`)
 
   const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
   spindle.log.info(`[NovelistMemory] Using connection for updater: ${connectionId ?? '(active connection fallback)'}`)
