@@ -17,15 +17,23 @@ await spindle.storage.mkdir('whiteboards')
 await spindle.storage.mkdir('archives')
 await spindle.storage.mkdir('pending')
 
+// ─── Active Generation State ────────────────────────────────────────────────
+// Track the chatId of the current generation so tool handlers can access it
+// without relying on getActive() (which needs userId for operator-scoped extensions).
+let activeGenerationChatId: string | null = null
+
 // ─── Context Handler (Pre-Assembly) ─────────────────────────────────────────
 // Seeds the Whiteboard data into the generation context BEFORE prompt assembly.
 // This gives the assembler awareness of the narrative state.
 
 spindle.registerContextHandler(async (context) => {
+  const chatId = (context as { chatId?: string }).chatId
+
+  // Always capture the chatId for tool handlers, even if whiteboard is disabled
+  if (chatId) activeGenerationChatId = chatId
+
   const config = await getConfig()
   if (!config.enabled) return context
-
-  const chatId = (context as { chatId?: string }).chatId
   if (!chatId) return context
 
   const whiteboard = await getWhiteboard(chatId)
@@ -162,21 +170,13 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
 
   if (payload.toolName !== 'recall_scene' && payload.toolName !== 'recall_by_range') return
 
-  // Determine chat ID — pass userId for operator-scoped extensions
-  let chatId: string | undefined
-  try {
-    const active = await (spindle.chats.getActive as Function)(userId)
-    chatId = active?.id
-  } catch {
-    // Fallback without userId
-    try {
-      const active = await spindle.chats.getActive()
-      chatId = active?.id
-    } catch { /* ignore */ }
-  }
-
+  // Use the chatId captured by the context handler during this generation.
+  // Tool invocations don't carry userId, so getActive() fails for operator-scoped
+  // extensions. The context handler fires before prompt assembly and captures the
+  // chatId before tools are invoked.
+  const chatId = activeGenerationChatId
   if (!chatId) {
-    return 'Unable to determine the active chat. Make sure a chat is open.'
+    return 'Unable to determine the active chat. The context handler may not have fired yet.'
   }
 
   // Direct archive lookup by message index range — no LLM overhead
