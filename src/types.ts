@@ -126,6 +126,7 @@ export interface NovelistConfig {
   directEditRequiresReview: boolean
   snapshotRetentionMessages: number
   snapshotRetentionAllSwipes: number
+  includeCharacterContext: boolean
 }
 
 // ─── Calibration Bank Types ─────────────────────────────────────────────────

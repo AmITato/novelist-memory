@@ -71,13 +71,41 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
 
   const calibrationBank = await getCalibrationBank(chatId)
 
+  // Fetch character card + persona if the toggle is on — gives the sidecar
+  // updater richer context for writing character-specific whiteboard entries.
+  let characterContext: { name: string, description: string, personality: string, scenario: string, persona?: string } | undefined
+  if (config.includeCharacterContext) {
+    try {
+      const chat = await spindle.chats.get(chatId) as { character_id?: string } | null
+      if (chat?.character_id) {
+        const character = await spindle.characters.get(chat.character_id, userId)
+        if (character) {
+          characterContext = {
+            name: character.name,
+            description: character.description,
+            personality: character.personality,
+            scenario: character.scenario,
+          }
+          // Also fetch the active persona for user-side context
+          try {
+            const persona = await spindle.personas.getActive(userId)
+            if (persona) characterContext.persona = `${persona.name}${persona.description ? ': ' + persona.description : ''}`
+          } catch { /* no persona configured */ }
+        }
+      }
+    } catch (err) {
+      spindle.log.warn(`[NovelistMemory] Failed to fetch character context: ${err}`)
+    }
+  }
+
   const updatePrompt = buildUpdatePrompt(
     whiteboard,
     lastUser.content,
     lastAssistant.content,
     recentContext,
     messageRange,
-    calibrationBank
+    calibrationBank,
+    characterContext,
   )
 
   const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)

@@ -469,12 +469,23 @@ export function setup(ctx: SpindleFrontendContext) {
       meter.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 12px;">
           <span><strong>Whiteboard size:</strong> ${info.tokens.toLocaleString()} / ${info.budget.toLocaleString()} tokens${tokenizerNote}</span>
-          <span style="color: ${barColor}; font-weight: 600;">${pct}%</span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: ${barColor}; font-weight: 600;">${pct}%</span>
+            <button class="novelist-btn novelist-btn-ghost" style="padding: 2px 8px; font-size: 11px;" title="Refresh token count">↻</button>
+          </span>
         </div>
         <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
           <div style="width: ${pct}%; height: 100%; background: ${barColor}; transition: width 0.3s ease;"></div>
         </div>
       `
+      const refreshBtn = meter.querySelector('button')
+      if (refreshBtn) {
+        refreshBtn.onclick = () => {
+          whiteboardTokenInfo = null
+          if (currentChatId) ctx.sendToBackend({ type: 'get_whiteboard_tokens', data: { chatId: currentChatId } })
+          renderDrawer()
+        }
+      }
       root.appendChild(meter)
     } else if (currentChatId) {
       ctx.sendToBackend({ type: 'get_whiteboard_tokens', data: { chatId: currentChatId } })
@@ -792,6 +803,14 @@ export function setup(ctx: SpindleFrontendContext) {
       'Use the Council sidecar connection for background LLM calls (updater + intern). Falls back to active connection if no sidecar is configured.',
       cfg.useSidecar ?? true,
       (val) => saveField('useSidecar', val)
+    ))
+
+    // Include character context toggle
+    generalSection.appendChild(makeToggleField(
+      'Include Character Context',
+      'Send the active character card and persona to the sidecar updater for richer, more character-specific whiteboard entries.',
+      cfg.includeCharacterContext ?? true,
+      (val) => saveField('includeCharacterContext', val)
     ))
 
     container.appendChild(generalSection)

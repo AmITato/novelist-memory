@@ -116,6 +116,7 @@ export function buildUpdatePrompt(
   recentContext: string,
   messageRange?: [number, number],
   calibrationBank?: CalibrationBank,
+  characterContext?: { name: string, description: string, personality: string, scenario: string, persona?: string },
 ): string {
   const serialized = serializeWhiteboard(currentWhiteboard)
   const sparse = isSparse(currentWhiteboard)
@@ -212,10 +213,21 @@ The difference: A story note says "Character A is angry." A craft note says "Cha
 DON'T: Add notes that could apply to any story. "Use sensory details" is not an author note.
 DO: Add notes that are specific enough to prevent a real mistake in the next generation.${sparse.authorNotes ? formatCalibrationExamples('AUTHOR NOTES', calibrationBank?.authorNotes, DEFAULT_AUTHOR_NOTES) : ''}`
 
+  const charBlock = characterContext ? `
+── CHARACTER & PERSONA CONTEXT ──
+Character: ${characterContext.name}
+${characterContext.description ? `Description: ${characterContext.description}` : ''}
+${characterContext.personality ? `Personality: ${characterContext.personality}` : ''}
+${characterContext.scenario ? `Scenario: ${characterContext.scenario}` : ''}
+${characterContext.persona ? `User Persona: ${characterContext.persona}` : ''}
+
+Use this context to write richer, more character-specific whiteboard entries. Match the character's voice in palette notes, capture relationship dynamics that reflect the established personality, and track narrative threads that align with the scenario.
+` : ''
+
   return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
 
 This whiteboard is the ONLY source of truth once messages scroll out of context. Every detail you track here is a detail preserved. Every detail you miss is lost forever. Be precise. Be specific. Be useful to the writer 200 messages from now.
-
+${charBlock}
 ${currentWhiteboard.chronicle.length > 0 ? 'Match the density and style of existing entries when adding new ones.\n' : ''}CURRENT WHITEBOARD STATE:
 ${serialized}
 

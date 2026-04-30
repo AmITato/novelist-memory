@@ -11,6 +11,8 @@
     "context_handler",
     "chat_mutation",
     "chats",
+    "characters",
+    "personas",
     "tools"
   ],
   "entry_backend": "dist/backend.js",

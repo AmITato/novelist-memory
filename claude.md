@@ -80,6 +80,8 @@ bun run build:frontend # Frontend only
 | `context_handler` | Seed whiteboard data into generation context pre-assembly |
 | `chat_mutation` | Read chat messages for archival and context |
 | `chats` | Access active chat info, council settings for sidecar resolution, fork detection |
+| `characters` | Read character cards for sidecar updater context injection |
+| `personas` | Read active persona for sidecar updater context injection |
 | `tools` | Register `recall_scene`, `recall_by_range`, `update_whiteboard`, and `random_number` tools |
 
 ## Hook points
@@ -289,6 +291,7 @@ This is handled by `resolveBackgroundConnectionId()` in `config.ts`. userId is t
 | `directEditRequiresReview` | `false` | Whether model-initiated whiteboard edits go through the pending/review flow |
 | `snapshotRetentionMessages` | `10` | Keep latest snapshot per message for this many recent messages |
 | `snapshotRetentionAllSwipes` | `1` | Keep all swipe snapshots for the last N messages |
+| `includeCharacterContext` | `true` | Send active character card + persona to the sidecar updater for richer entries |
 | `compactionThreshold` | `100` | Chronicle entries before compaction triggers |
 | `auditIntervalMessages` | `40` | Messages between full whiteboard audits |
 

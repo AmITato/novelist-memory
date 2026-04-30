@@ -16,6 +16,7 @@ const DEFAULT_CONFIG: NovelistConfig = {
   directEditRequiresReview: false,
   snapshotRetentionMessages: 10,
   snapshotRetentionAllSwipes: 1,
+  includeCharacterContext: true,
 }
 
 /**
