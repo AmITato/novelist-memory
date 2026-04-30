@@ -168,13 +168,10 @@ export async function seedFromParent(
   // Find the fork-point message's index in the parent's snapshots
   const parentSnapshots = await getSnapshots(parentChatId)
   if (parentSnapshots.length === 0) {
-    // Parent has no snapshots — fall back to copying the parent's current whiteboard
-    spindle.log.warn(`[NovelistMemory] Fork seeding: parent ${parentChatId} has no snapshots, copying current whiteboard`)
-    const parentWb = await getWhiteboard(parentChatId)
-    const seeded = structuredClone(parentWb)
-    seeded.chatId = newChatId
-    await saveWhiteboard(seeded)
-    return seeded
+    // Parent has no snapshots — no tracked state exists at the fork point.
+    // Leave the whiteboard blank rather than copying stale/wrong state.
+    spindle.log.info(`[NovelistMemory] Fork seeding: parent ${parentChatId} has no snapshots, leaving whiteboard blank`)
+    return null
   }
 
   // Find the snapshot(s) for the fork-point message
@@ -236,13 +233,9 @@ export async function seedFromParent(
     }
   } catch { /* fall through */ }
 
-  // Absolute fallback — copy parent's current whiteboard
-  spindle.log.warn(`[NovelistMemory] Fork seeding: could not locate fork point, copying parent's current whiteboard`)
-  const parentWb = await getWhiteboard(parentChatId)
-  const seeded = structuredClone(parentWb)
-  seeded.chatId = newChatId
-  await saveWhiteboard(seeded)
-  return seeded
+  // No snapshot found for the fork point — leave blank rather than copying wrong state
+  spindle.log.info(`[NovelistMemory] Fork seeding: could not locate fork point snapshot, leaving whiteboard blank`)
+  return null
 }
 
 // ─── Pruning ────────────────────────────────────────────────────────────────
