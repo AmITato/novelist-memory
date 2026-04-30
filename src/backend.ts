@@ -2,7 +2,7 @@ import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingU
 import { queryIntern, formatInternResults } from './intern'
 import { processGenerationEnd } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
-import { getArchiveStats, getArchivedMessagesByRange } from './archive'
+import { getArchiveStats, getArchivedMessagesByRange, removeArchivedMessage } from './archive'
 import { createSnapshot, getSnapshotForSwipe, getPreMessageState, getLatestSnapshotForMessage, getSnapshots, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
 import { countTokens } from './tokens'
 import type { NovelistConfig, Whiteboard, WhiteboardDelta, PendingUpdate } from './types'
@@ -628,6 +628,65 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
     spindle.log.info(`[NovelistMemory] Swipe nav: restored snapshot ${snapshot.id} for ${messageId} swipe ${targetSwipeId}`)
   } else {
     spindle.log.info(`[NovelistMemory] Swipe nav: no snapshot found for ${messageId} swipe ${targetSwipeId}, whiteboard unchanged`)
+  }
+})
+
+// ─── Message Deletion Cleanup ───────────────────────────────────────────────
+
+;(spindle.on as Function)('MESSAGE_DELETED', async (payload: { chatId: string, messageId: string }, userId?: string) => {
+  if (userId) lastKnownUserId = userId
+  if (!payload.chatId || !payload.messageId) return
+
+  const chatId = payload.chatId
+  const messageId = payload.messageId
+  spindle.log.info(`[NovelistMemory] Message deleted: ${messageId} in chat ${chatId}`)
+
+  try {
+    // 1. Try to rewind the whiteboard to the state before this message's generation
+    const snapshot = await getLatestSnapshotForMessage(chatId, messageId)
+    if (snapshot?.preState) {
+      const rewound = structuredClone(snapshot.preState)
+      rewound.chatId = chatId
+      await saveWhiteboard(rewound)
+      spindle.log.info(`[NovelistMemory] Message delete: rewound whiteboard to preState from snapshot ${snapshot.id}`)
+    } else if (snapshot) {
+      // Snapshot exists but no preState — try the getPreMessageState fallback
+      // (finds the latest snapshot belonging to a different message)
+      const fallbackState = await getPreMessageState(chatId, messageId)
+      if (fallbackState) {
+        const rewound = structuredClone(fallbackState)
+        rewound.chatId = chatId
+        await saveWhiteboard(rewound)
+        spindle.log.info(`[NovelistMemory] Message delete: rewound whiteboard to prior message state`)
+      } else {
+        spindle.log.info(`[NovelistMemory] Message delete: no prior state found, whiteboard unchanged`)
+      }
+    } else {
+      spindle.log.info(`[NovelistMemory] Message delete: no snapshot found for ${messageId}, whiteboard unchanged`)
+    }
+
+    // 2. Remove all snapshots for this message
+    await removeSnapshotsForMessage(chatId, messageId)
+
+    // 3. Remove pending updates sourced from this message
+    const pendingList = await getPendingUpdates(chatId)
+    for (const pending of pendingList) {
+      if (pending.sourceMessageId === messageId) {
+        await rejectPendingUpdate(chatId, pending.id)
+        spindle.log.info(`[NovelistMemory] Message delete: rejected pending update ${pending.id}`)
+      }
+    }
+
+    // 4. Remove archive entries for this message
+    const removed = await removeArchivedMessage(chatId, messageId)
+    if (removed) spindle.log.info(`[NovelistMemory] Message delete: removed archive entry for ${messageId}`)
+
+    // 5. Notify frontend
+    const updatedWb = await getWhiteboard(chatId)
+    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: updatedWb } }, lastKnownUserId ?? undefined)
+    await refreshMacros(chatId)
+  } catch (err) {
+    spindle.log.error(`[NovelistMemory] Message deletion cleanup failed for ${messageId}: ${err}`)
   }
 })
 

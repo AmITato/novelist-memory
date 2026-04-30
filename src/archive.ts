@@ -56,6 +56,17 @@ export async function archiveMessages(
   spindle.log.info(`Archived ${newMessages.length} messages for chat ${chatId}`)
 }
 
+// ─── Removal ────────────────────────────────────────────────────────────────
+
+export async function removeArchivedMessage(chatId: string, messageId: string): Promise<boolean> {
+  const archive = await getArchive(chatId)
+  const before = archive.messages.length
+  archive.messages = archive.messages.filter(m => m.messageId !== messageId)
+  if (archive.messages.length === before) return false
+  await saveArchive(archive)
+  return true
+}
+
 // ─── Search ─────────────────────────────────────────────────────────────────
 
 type IndexEntry = Omit<ArchivedMessage, 'content'>
