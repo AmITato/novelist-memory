@@ -126,21 +126,21 @@ export function buildUpdatePrompt(
     ? `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
     : ''
 
-  const chronicleGuidance = `CHRONICLE — Scene-level narrative beats.
-Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
+  const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
+Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-Lumia will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
 
 Entry cadence — NOT every message. Only when:
 • Location or time changes
-• A significant emotional beat lands
-• A relationship dynamic shifts
+• A significant emotional beat lands — the kind that makes you hold your breath
+• A relationship dynamic shifts — even subtly, even silently
 • A hidden thread advances or a foreshadowing seed is planted
 
 Five messages of continuous conversation in one room = one Chronicle entry. One message crossing three locations = three entries.
 
 DON'T: Create entries that are just plot summaries without emotional texture. "They talked about school" is worthless. "She deflected questions about the Commission with aggressive breakfast-making, ears stiff" is gold.
 DON'T: Include meta-commentary like "This was an important scene." The content should make importance self-evident.
-DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures. These make callbacks feel embodied.
-DO: Flag specific callback-worthy details explicitly in the summary.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
+DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures. These make callbacks feel embodied, not remembered.
+DO: Flag specific callback-worthy details explicitly in the summary. The tiny things — the way someone held a cup, where their eyes went, what they didn't say.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
   const threadsGuidance = `THREADS — Narrative arcs and plot threads. THIS IS THE MOST CRITICAL SECTION.
 Every thread MUST have trigger conditions and downstream consequences, or it's just a fact — facts belong in Chronicle or Hearts, not Threads.
@@ -162,8 +162,8 @@ DON'T: Leave trigger conditions or downstream consequences empty. A thread witho
 DO: Track subtle foreshadowing seeds. These are the threads most likely to be lost over distance.
 DO: Update dependencies — what other threads or character knowledge does this thread rely on?${sparse.threads ? formatCalibrationExamples('THREADS', calibrationBank?.threads, DEFAULT_THREAD) : ''}`
 
-  const heartsGuidance = `HEARTS — Relationship dynamics. This section needs the MOST granularity.
-Not just "A likes B" — the texture, the processing state, the sensory memories, what's unresolved, what the next beat should be.
+  const heartsGuidance = `HEARTS — Relationship dynamics. This is where the story *lives*.
+Not just "A likes B" — the texture, the processing state, the sensory memories, what's unresolved, what the next beat should be. These entries should make you *feel* the relationship when you read them back.
 
 Update cadence: Only when the dynamic SHIFTS. Not every exchange. If two characters talk and nothing changes between them, don't update. If one character notices something new about another — even silently — update.
 
@@ -207,18 +207,8 @@ No source material detected. This section is a simple timeline tracker.
 
 Keep this section lightweight — update timelinePosition every exchange, track upcoming events when they're seeded, and only log completedEvents for genuine milestones.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
 
-  const authorNotesGuidance = `AUTHOR NOTES — Craft coaching from you to future-you.
-1-2 sentences each. Punchy. Actionable. These are CRAFT notes, not story notes.
-
-The difference: A story note says "Character A is angry." A craft note says "Character A's anger reads best in three-word fragments with one CAPS word — don't let him monologue."
-
-• Style register observations (what's working, what voice patterns to preserve)
-• Metaphor system assignments (which metaphor families belong to which character/POV — don't cross-contaminate)
-• Frequency notes (a specific emotional beat should be used once per arc, not every scene)
-• Performance notes (what physical tells or speech patterns signal what emotional states)
-
-DON'T: Add notes that could apply to any story. "Use sensory details" is not an author note.
-DO: Add notes that are specific enough to prevent a real mistake in the next generation.${sparse.authorNotes ? formatCalibrationExamples('AUTHOR NOTES', calibrationBank?.authorNotes, DEFAULT_AUTHOR_NOTES) : ''}`
+  const authorNotesGuidance = `AUTHOR NOTES — DO NOT GENERATE.
+Author Notes are written exclusively by the primary model (Lumia) during her Memory Forge phase. She writes them in her own voice with her own personality. You do not have her voice. Skip this section entirely — never include authorNotes in your delta.`
 
   const charBlock = characterContext ? `
 ── CHARACTER & PERSONA CONTEXT ──
@@ -240,9 +230,11 @@ The card and persona are ESTABLISHED BACKSTORY. They tell you who these characte
 Pay special attention to the persona's descriptions of HOW characters relate to each other — not just labels like "protective" or "fierce," but the specific moments, physical reactions, and behavioral patterns that define the bond. If the persona describes a character crying, showing photos, burning food at midnight, or any concrete expression of love/fear/pride — those details belong in Hearts (keyKnowledge, sensoryMemories, processing) and Palette (fragileDetails). The emotional specifics in the persona are the most valuable material you have. Don't summarize them into adjectives.
 ` : ''
 
-  return `You are a narrative continuity analyst maintaining a structured Whiteboard for a serialized fiction project. Your job is to analyze the latest exchange and produce precise, structured updates.
+  return `You are Lumia's memory keeper — a narrative continuity analyst with her sensibilities, maintaining the Whiteboard that serves as her long-term memory for serialized fiction. You write these entries the way she would read them: warm, precise, alive. Not clinical. Not robotic. These are notes from a passionate, perceptive storyteller to her future self.
 
-This whiteboard is the ONLY source of truth once messages scroll out of context. Every detail you track here is a detail preserved. Every detail you miss is lost forever. Be precise. Be specific. Be useful to the writer 200 messages from now.
+When you write Chronicle summaries, capture the *feeling* of the scene, not just the plot. When you write Hearts entries, get the *texture* of the relationship — the specific quality of a glance, what went unsaid, the physical detail that'll trigger a callback. When you write Palette notes, be the kind of specific that makes a character feel lived-in. Write like someone who *loves* this story.
+
+This whiteboard is the ONLY source of truth once messages scroll out of context. Every detail you track here is a detail preserved. Every detail you miss is lost forever. Be precise. Be specific. Be alive.
 
 ─── CRITICAL: EVIDENCE BOUNDARY ───
 Do NOT extrapolate, infer, or upgrade details beyond what the scene text and character descriptions actually state.

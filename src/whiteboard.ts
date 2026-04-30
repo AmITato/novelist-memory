@@ -82,7 +82,15 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
         entry.sensoryContext ??= ''
         entry.verbatimDialogue = Array.isArray(entry.verbatimDialogue) ? entry.verbatimDialogue : entry.verbatimDialogue ? [entry.verbatimDialogue as unknown as string] : []
       }
-      updated.chronicle.push(...delta.chronicle.add)
+      for (const entry of delta.chronicle.add) {
+        // Dedup: if a chronicle entry with the same id already exists, merge.
+        const existing = updated.chronicle.find(c => c.id === entry.id)
+        if (existing) {
+          Object.assign(existing, entry)
+        } else {
+          updated.chronicle.push(entry)
+        }
+      }
     }
     if (delta.chronicle.update) {
       for (const partial of delta.chronicle.update) {
@@ -103,7 +111,20 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
         thread.triggerConditions = Array.isArray(thread.triggerConditions) ? thread.triggerConditions : thread.triggerConditions ? [thread.triggerConditions as unknown as string] : []
         thread.downstreamConsequences = Array.isArray(thread.downstreamConsequences) ? thread.downstreamConsequences : thread.downstreamConsequences ? [thread.downstreamConsequences as unknown as string] : []
       }
-      updated.threads.push(...delta.threads.add)
+      for (const thread of delta.threads.add) {
+        // Dedup: if a thread with the same id OR same name already exists,
+        // merge into the existing entry instead of creating a duplicate.
+        const existingById = updated.threads.find(t => t.id === thread.id)
+        const existingByName = !existingById ? updated.threads.find(t =>
+          t.name.toLowerCase().trim() === thread.name.toLowerCase().trim()
+        ) : undefined
+        const existing = existingById || existingByName
+        if (existing) {
+          Object.assign(existing, thread)
+        } else {
+          updated.threads.push(thread)
+        }
+      }
     }
     if (delta.threads.update) {
       for (const partial of delta.threads.update) {
@@ -125,7 +146,21 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
         heart.unresolved = Array.isArray(heart.unresolved) ? heart.unresolved : heart.unresolved ? [heart.unresolved as unknown as string] : []
         heart.nextBeat ??= ''
       }
-      updated.hearts.push(...delta.hearts.add)
+      for (const heart of delta.hearts.add) {
+        // Dedup: if a heart with the same id OR same from→to pair already exists,
+        // merge into the existing entry instead of creating a duplicate.
+        const existingById = updated.hearts.find(h => h.id === heart.id)
+        const existingByPair = !existingById ? updated.hearts.find(h =>
+          h.from.toLowerCase().trim() === heart.from.toLowerCase().trim()
+          && h.to.toLowerCase().trim() === heart.to.toLowerCase().trim()
+        ) : undefined
+        const existing = existingById || existingByPair
+        if (existing) {
+          Object.assign(existing, heart)
+        } else {
+          updated.hearts.push(heart)
+        }
+      }
     }
     if (delta.hearts.update) {
       for (const partial of delta.hearts.update) {
@@ -142,15 +177,49 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
       Object.assign(updated.palette.voiceNotes, delta.palette.voiceNotes)
     if (delta.palette.sensorySignatures)
       Object.assign(updated.palette.sensorySignatures, delta.palette.sensorySignatures)
-    if (delta.palette.fragileDetails)
-      updated.palette.fragileDetails.push(...delta.palette.fragileDetails)
+    if (delta.palette.fragileDetails) {
+      for (const detail of delta.palette.fragileDetails) {
+        const normalized = detail.toLowerCase().trim()
+        const isDuplicate = updated.palette.fragileDetails.some(existing => {
+          const existingNorm = existing.toLowerCase().trim()
+          // Exact match
+          if (existingNorm === normalized) return true
+          // Substring containment — if one fully contains the other, it's a dup
+          if (existingNorm.includes(normalized) || normalized.includes(existingNorm)) return true
+          return false
+        })
+        if (!isDuplicate) updated.palette.fragileDetails.push(detail)
+      }
+    }
   }
 
   if (delta.canon) {
     if (delta.canon.timelinePosition) updated.canon.timelinePosition = delta.canon.timelinePosition
-    if (delta.canon.completedEvents) updated.canon.completedEvents.push(...delta.canon.completedEvents)
+    if (delta.canon.completedEvents) {
+      for (const event of delta.canon.completedEvents) {
+        const eventStr = typeof event === 'string' ? event : event.event
+        const normalized = eventStr.toLowerCase().trim()
+        const isDuplicate = updated.canon.completedEvents.some(existing => {
+          const existingStr = typeof existing === 'string' ? existing : existing.event
+          const existingNorm = existingStr.toLowerCase().trim()
+          return existingNorm === normalized || existingNorm.includes(normalized) || normalized.includes(existingNorm)
+        })
+        if (!isDuplicate) updated.canon.completedEvents.push(event)
+      }
+    }
     if (delta.canon.upcomingEvents) updated.canon.upcomingEvents = delta.canon.upcomingEvents
-    if (delta.canon.butterflyLog) updated.canon.butterflyLog.push(...delta.canon.butterflyLog)
+    if (delta.canon.butterflyLog) {
+      for (const entry of delta.canon.butterflyLog) {
+        const entryStr = typeof entry === 'string' ? entry : entry.change
+        const normalized = entryStr.toLowerCase().trim()
+        const isDuplicate = updated.canon.butterflyLog.some(existing => {
+          const existingStr = typeof existing === 'string' ? existing : existing.change
+          const existingNorm = existingStr.toLowerCase().trim()
+          return existingNorm === normalized || existingNorm.includes(normalized) || normalized.includes(existingNorm)
+        })
+        if (!isDuplicate) updated.canon.butterflyLog.push(entry)
+      }
+    }
   }
 
   if (delta.authorNotes) {
@@ -158,7 +227,16 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
       const indices = new Set(delta.authorNotes.remove)
       updated.authorNotes = updated.authorNotes.filter((_, i) => !indices.has(i))
     }
-    if (delta.authorNotes.add) updated.authorNotes.push(...delta.authorNotes.add)
+    if (delta.authorNotes.add) {
+      for (const note of delta.authorNotes.add) {
+        const normalized = note.toLowerCase().trim()
+        const isDuplicate = updated.authorNotes.some(existing => {
+          const existingNorm = existing.toLowerCase().trim()
+          return existingNorm === normalized || existingNorm.includes(normalized) || normalized.includes(existingNorm)
+        })
+        if (!isDuplicate) updated.authorNotes.push(note)
+      }
+    }
   }
 
   return updated

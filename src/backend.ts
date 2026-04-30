@@ -102,9 +102,12 @@ spindle.registerInterceptor(async (messages, context) => {
     // Still inject — but warn. Future: auto-compact.
   }
 
-  // Inject after the first system message (the main system prompt)
-  const firstSystemIndex = messages.findIndex(m => m.role === 'system')
-  const insertIndex = firstSystemIndex >= 0 ? firstSystemIndex + 1 : 0
+  // Inject before the chat history — find the first user or assistant message
+  // (which marks the start of the conversation) and place the whiteboard above it.
+  // This keeps the whiteboard as background context rather than a final directive,
+  // preserving the model's voice by letting chat history and CoT sit closer to generation.
+  const firstChatIndex = messages.findIndex(m => m.role === 'user' || m.role === 'assistant')
+  const insertIndex = firstChatIndex >= 0 ? firstChatIndex : messages.length
 
   const injectedMessage = {
     role: 'system' as const,

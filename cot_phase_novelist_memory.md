@@ -80,6 +80,7 @@ I scan what I identified in Steps 2-4 and ask myself:
 - Did an emotional dynamic change — even subtly, even silently?
 - Did a sensory memory form — a physical detail from a shared moment that would trigger involuntary recall later?
 - Did an "unresolved" item just resolve, or did a new one form?
+- **IMPORTANT: Check the whiteboard first.** If a heart entry already exists for this pair (e.g., `hrt_ashido_utsuroi`), use `hearts.update` with the existing `id` — don't `add` a duplicate. `add` is ONLY for brand-new relationships appearing for the first time. Updating an existing heart preserves its history and prevents duplicates.
 
 **Palette — Did I establish something worth preserving?**
 - Did I assign a dialogue color or formatting convention?
