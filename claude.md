@@ -172,6 +172,28 @@ Settings save immediately on change (no save button needed). Green "✓ Settings
 - `ctx.onBackendMessage()` callback gets `(payload: unknown)` — no userId on the frontend side.
 - `spindle.onFrontendMessage()` callback gets `(payload: unknown, userId: string)` — userId is always present.
 - **Inline function calling**: Tools registered with `inline_available: true` are sent to the primary model as function call schemas during generation (requires `enableFunctionCalling` in the preset's completion settings). Tool names are sanitized: `extensionId:toolName` → `extensionId__toolName`. The tool execution uses Lumiverse's existing 3-round inline tool call loop.
+- **Tool invocations have no userId**: `invokeExtensionTool` in the worker host strips `userId`/`__userId`/`__user_id` from args for security. The `tool_invocation` message carries no userId. The handler receives `(payload)` only — NOT `(payload, userId)`. Don't call APIs that need userId (like `getActive()`) in tool handlers. Use the context handler to capture state beforehand.
+
+## Lumiverse core changes (inline tool calling)
+
+We added inline function calling support for Spindle extension tools to Lumiverse core. PR: https://github.com/prolix-oc/Lumiverse/pull/88
+
+### What was changed in Lumiverse (2 files)
+
+**`src/spindle/tool-registry.ts`:**
+- Added `getInlineAvailableTools()` — filters tools with `inline_available: true`
+
+**`src/services/generate.service.ts`:**
+- After the Council tools block (~line 1753), queries `toolRegistry.getInlineAvailableTools()` and injects them into the `inlineTools` array sent to the LLM provider. Gated by the same `enableFunctionCalling` preset toggle. Tool names sanitized `extensionId:toolName` → `extensionId__toolName`.
+- Extended `executeInlineCouncilToolCalls()` to handle both Council-prefixed tools (`memberPrefix_toolName`) and bare extension tools (direct `toolsByName` lookup). Extension tools dispatch via `invokeExtensionCouncilTool` without council member context.
+- Relaxed streaming loop dispatch gate — no longer requires `inlineMembersByPrefix`, fires when `inlineToolDefsByName` exists.
+
+### What was changed in lumiverse-spindle-types (local only, needs npm publish)
+
+**`src/tools.ts`** — Added `inline_available?: boolean` to `ToolRegistration`
+**`src/api.ts`** — Added `inline_available?: boolean` to `ToolRegistrationDTO`
+
+These changes were applied locally in `node_modules/` and `clean/` cache. The `lumiverse-spindle-types` npm package (published at `prolix-oc/lumiverse-spindle-types`) has NOT been updated yet — it needs a new version published with the field added.
 
 ## Style conventions
 
