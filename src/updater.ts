@@ -7,6 +7,55 @@ import { buildUpdatePrompt, buildRebuildPrompt, buildArchiveMetadataPrompt } fro
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
+// ─── JSON Repair ────────────────────────────────────────────────────────────
+// Models at high temperature sometimes produce malformed JSON. This attempts
+// common fixes before giving up and retrying the whole request.
+
+function repairJson(raw: string): string | null {
+  let s = raw.trim()
+
+  // Strip trailing commas before } or ]
+  s = s.replace(/,\s*([}\]])/g, '$1')
+
+  // Fix unquoted property names: { foo: → { "foo":
+  s = s.replace(/([{,]\s*)([a-zA-Z_$][\w$]*)\s*:/g, '$1"$2":')
+
+  // Try to close unclosed brackets/braces
+  let opens = 0
+  let closesNeeded = ''
+  for (const ch of s) {
+    if (ch === '{') { opens++; closesNeeded = '}' + closesNeeded }
+    else if (ch === '[') { opens++; closesNeeded = ']' + closesNeeded }
+    else if (ch === '}' || ch === ']') { opens--; closesNeeded = closesNeeded.slice(1) }
+  }
+  if (opens > 0) s += closesNeeded
+
+  // Fix unterminated strings: find the last unmatched " and close it
+  // Simple heuristic: count unescaped quotes — if odd, append one before the next structural char
+  const quoteCount = (s.match(/(?<!\\)"/g) || []).length
+  if (quoteCount % 2 !== 0) {
+    // Find the last quote and the next structural character after it
+    const lastQuote = s.lastIndexOf('"')
+    const afterQuote = s.slice(lastQuote + 1)
+    // Insert a closing quote before the first structural char
+    const structMatch = afterQuote.match(/[}\],:]/)
+    if (structMatch && structMatch.index !== undefined) {
+      const insertPos = lastQuote + 1 + structMatch.index
+      s = s.slice(0, insertPos) + '"' + s.slice(insertPos)
+    } else {
+      s = s + '"'
+    }
+  }
+
+  // Validate the repair actually worked
+  try {
+    JSON.parse(s)
+    return s
+  } catch {
+    return null
+  }
+}
+
 // ─── Lumia Personality Loading ───────────────────────────────────────────────
 // Reads Lumia's personality from Lumiverse's variable system. Used by both the
 // normal sidecar updater (third-person framing) and the rebuild command (first-person).
@@ -398,16 +447,41 @@ export async function rebuildWhiteboard(
       if (connectionId) genRequest.connection_id = connectionId
     }
 
-    // Retry with exponential backoff for rate limits (429)
-    let response: { content: string } | null = null
+    // Retry with backoff for rate limits (429) and parse failures
+    let delta: WhiteboardDelta | null = null
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        response = await spindle.generate.quiet(genRequest) as { content: string }
+        const response = await spindle.generate.quiet(genRequest) as { content: string }
+
+        let content = response.content.trim()
+        if (content.startsWith('```')) {
+          content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+        }
+
+        // Try direct parse first
+        try {
+          delta = JSON.parse(content)
+        } catch {
+          // JSON repair: try to fix common model output issues
+          const repaired = repairJson(content)
+          if (repaired) {
+            delta = JSON.parse(repaired)
+            spindle.log.info(`[NovelistMemory] Rebuild: JSON repaired for exchange ${i + 1}`)
+          } else if (attempt < 3) {
+            // Repair failed, retry the whole request
+            spindle.log.warn(`[NovelistMemory] Rebuild: malformed JSON on exchange ${i + 1}, retrying (attempt ${attempt + 1}/3)`)
+            onProgress?.(i + 1, exchanges.length, `Malformed JSON — retrying (${attempt + 1}/3)...`)
+            await new Promise(r => setTimeout(r, 2000))
+            continue
+          } else {
+            spindle.log.error(`[NovelistMemory] Rebuild: JSON parse failed after 3 retries on exchange ${i + 1}`)
+          }
+        }
         break
       } catch (err) {
         const errStr = String(err)
         if (errStr.includes('429') && attempt < 3) {
-          const delay = (attempt + 1) * 5000 // 5s, 10s, 15s
+          const delay = (attempt + 1) * 5000
           spindle.log.warn(`[NovelistMemory] Rebuild: rate limited on exchange ${i + 1}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)`)
           onProgress?.(i + 1, exchanges.length, `Rate limited — retrying in ${delay / 1000}s...`)
           await new Promise(r => setTimeout(r, delay))
@@ -418,24 +492,14 @@ export async function rebuildWhiteboard(
       }
     }
 
-    if (response) {
-      try {
-        let content = response.content.trim()
-        if (content.startsWith('```')) {
-          content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
-        }
-        const delta: WhiteboardDelta = JSON.parse(content)
-
-        const hasContent = Object.values(delta).some(v => v !== undefined && v !== null)
-        if (hasContent) {
-          whiteboard = apply(whiteboard, delta)
-          await saveWb(whiteboard)
-          spindle.log.info(`[NovelistMemory] Rebuild: applied delta for exchange ${i + 1} — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}`)
-        } else {
-          spindle.log.info(`[NovelistMemory] Rebuild: no changes from exchange ${i + 1}`)
-        }
-      } catch (err) {
-        spindle.log.error(`[NovelistMemory] Rebuild: failed to parse delta for exchange ${i + 1}: ${err}`)
+    if (delta) {
+      const hasContent = Object.values(delta).some(v => v !== undefined && v !== null)
+      if (hasContent) {
+        whiteboard = apply(whiteboard, delta)
+        await saveWb(whiteboard)
+        spindle.log.info(`[NovelistMemory] Rebuild: applied delta for exchange ${i + 1} — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}`)
+      } else {
+        spindle.log.info(`[NovelistMemory] Rebuild: no changes from exchange ${i + 1}`)
       }
     }
   }
