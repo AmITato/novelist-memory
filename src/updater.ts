@@ -448,10 +448,13 @@ export async function rebuildWhiteboard(
     }
 
     // Retry with backoff for rate limits (429) and parse failures
+    spindle.log.info(`[NovelistMemory] Rebuild: exchange ${i + 1} — temp: ${config.updaterTemperature ?? 0.3}, connection: ${useSidecar ? 'sidecar' : 'active'}, prompt: ${useFirstPerson ? 'lumia' : 'sidecar'}`)
     let delta: WhiteboardDelta | null = null
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const response = await spindle.generate.quiet(genRequest) as { content: string }
+        spindle.log.info(`[NovelistMemory] Rebuild: exchange ${i + 1} response — ${response.content?.length ?? 0} chars, preview: "${(response.content ?? '').slice(0, 200).replace(/\n/g, '\\n')}"`)
+
 
         let content = response.content.trim()
         if (content.startsWith('```')) {
