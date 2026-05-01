@@ -66,13 +66,15 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
     .map((m: { role: string, content: string }) => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
     .join('\n\n')
 
-  // Determine message indices for the latest exchange so Chronicle entries
-  // can be tagged with sourceMessageRange for direct retrieval
-  const userIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastUser as { id: string }).id)
+  // Determine message index for the latest exchange so Chronicle entries
+  // can be tagged with sourceMessageRange for direct retrieval.
+  // We use the assistant message index since that's where the story prose lives.
+  // The sidecar is told "this is message #N" and tags entries accordingly.
+  // For recall_by_range, start===end means a single message lookup.
   const assistantIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastAssistant as { id: string }).id)
   const messageRange: [number, number] | undefined =
-    userIndex >= 0 && assistantIndex >= 0
-      ? [Math.min(userIndex, assistantIndex), Math.max(userIndex, assistantIndex)]
+    assistantIndex >= 0
+      ? [assistantIndex, assistantIndex]
       : undefined
 
   const calibrationBank = await getCalibrationBank(chatId)
@@ -219,6 +221,139 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
       },
     }, userId)
   }
+}
+
+// ─── Whiteboard Rebuild ─────────────────────────────────────────────────────
+// Walks through ALL message pairs in a chat and rebuilds the whiteboard from
+// scratch using the primary model (not sidecar). Used as a recovery tool when
+// whiteboard state has been lost due to bugs, or as an initial population tool.
+
+export async function rebuildWhiteboard(
+  chatId: string,
+  userId?: string,
+  onProgress?: (step: number, total: number, section: string) => void,
+): Promise<void> {
+  const config = await getConfig()
+
+  const allMessages = await spindle.chat.getMessages(chatId)
+  spindle.log.info(`[NovelistMemory] Rebuild: ${allMessages.length} messages in chat ${chatId}`)
+
+  // Pair up user+assistant exchanges
+  const exchanges: Array<{
+    user: { content: string, index: number, id: string }
+    assistant: { content: string, index: number, id: string }
+  }> = []
+
+  for (let i = 0; i < allMessages.length - 1; i++) {
+    const msg = allMessages[i] as { id: string, role: string, content: string }
+    const next = allMessages[i + 1] as { id: string, role: string, content: string }
+    if (msg.role === 'user' && next.role === 'assistant') {
+      exchanges.push({
+        user: { content: msg.content, index: i, id: msg.id },
+        assistant: { content: next.content, index: i + 1, id: next.id },
+      })
+    }
+  }
+
+  if (exchanges.length === 0) {
+    spindle.log.warn('[NovelistMemory] Rebuild: no user+assistant exchanges found')
+    return
+  }
+
+  spindle.log.info(`[NovelistMemory] Rebuild: found ${exchanges.length} exchanges to process`)
+
+  // Reset whiteboard
+  const { createEmptyWhiteboard, saveWhiteboard: saveWb, applyDelta: apply, getCalibrationBank: getCalBank } = await import('./whiteboard')
+  let whiteboard = createEmptyWhiteboard(chatId)
+  await saveWb(whiteboard)
+
+  // Fetch character context once (doesn't change per exchange)
+  let characterContext: { name: string, description: string, personality: string, scenario: string, persona?: string } | undefined
+  if (config.includeCharacterContext) {
+    try {
+      const chat = await spindle.chats.get(chatId) as { character_id?: string } | null
+      if (chat?.character_id) {
+        const character = await spindle.characters.get(chat.character_id, userId)
+        if (character) {
+          characterContext = {
+            name: character.name,
+            description: character.description,
+            personality: character.personality,
+            scenario: character.scenario,
+          }
+          try {
+            const persona = await spindle.personas.getActive(userId)
+            if (persona) characterContext.persona = `${persona.name}${persona.description ? ': ' + persona.description : ''}`
+          } catch { /* no persona */ }
+        }
+      }
+    } catch (err) {
+      spindle.log.warn(`[NovelistMemory] Rebuild: failed to fetch character context: ${err}`)
+    }
+  }
+
+  const calibrationBank = await getCalBank(chatId)
+
+  for (let i = 0; i < exchanges.length; i++) {
+    const exchange = exchanges[i]
+    onProgress?.(i + 1, exchanges.length, `Processing exchange ${i + 1}/${exchanges.length} (message #${exchange.assistant.index})`)
+    spindle.log.info(`[NovelistMemory] Rebuild: processing exchange ${i + 1}/${exchanges.length} (assistant msg #${exchange.assistant.index})`)
+
+    // Build context from prior messages (up to sliding window size)
+    const contextStart = Math.max(0, exchange.user.index - config.slidingWindowSize * 2)
+    const contextMessages = allMessages.slice(contextStart, exchange.user.index)
+    const recentContext = contextMessages
+      .map((m: { role: string, content: string }) => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
+      .join('\n\n')
+
+    // Use assistant index for sourceMessageRange
+    const messageRange: [number, number] = [exchange.assistant.index, exchange.assistant.index]
+
+    const updatePrompt = buildUpdatePrompt(
+      whiteboard,
+      exchange.user.content,
+      exchange.assistant.content,
+      recentContext,
+      messageRange,
+      calibrationBank,
+      characterContext,
+    )
+
+    try {
+      // Use active connection (primary model), NOT sidecar
+      const genRequest: Record<string, unknown> = {
+        messages: [
+          { role: 'system', content: updatePrompt },
+          { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
+        ],
+        parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
+      }
+      if (userId) genRequest.userId = userId
+      // Deliberately NOT setting connection_id — uses active connection (primary model)
+
+      const response = await spindle.generate.quiet(genRequest) as { content: string }
+
+      let content = response.content.trim()
+      if (content.startsWith('```')) {
+        content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+      }
+      const delta: WhiteboardDelta = JSON.parse(content)
+
+      const hasContent = Object.values(delta).some(v => v !== undefined && v !== null)
+      if (hasContent) {
+        whiteboard = apply(whiteboard, delta)
+        await saveWb(whiteboard)
+        spindle.log.info(`[NovelistMemory] Rebuild: applied delta for exchange ${i + 1} — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}`)
+      } else {
+        spindle.log.info(`[NovelistMemory] Rebuild: no changes from exchange ${i + 1}`)
+      }
+    } catch (err) {
+      spindle.log.error(`[NovelistMemory] Rebuild: failed on exchange ${i + 1}: ${err}`)
+      // Continue with next exchange — don't abort the whole rebuild
+    }
+  }
+
+  spindle.log.info(`[NovelistMemory] Rebuild complete — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}, notes: ${whiteboard.authorNotes.length}`)
 }
 
 // ─── Archive Check ──────────────────────────────────────────────────────────

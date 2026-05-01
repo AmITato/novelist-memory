@@ -123,7 +123,9 @@ export function buildUpdatePrompt(
   const adaptation = isAdaptationMode(currentWhiteboard)
 
   const rangeNote = messageRange
-    ? `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
+    ? messageRange[0] === messageRange[1]
+      ? `\nMESSAGE INDEX: This exchange is message #${messageRange[0]}. Use sourceMessageRange: [${messageRange[0]}, ${messageRange[0]}] in Chronicle entries.`
+      : `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
     : ''
 
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.

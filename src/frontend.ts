@@ -1128,6 +1128,28 @@ export function setup(ctx: SpindleFrontendContext) {
       debugBtnRow.appendChild(rerunKeepBtn)
 
       debugSection.appendChild(debugBtnRow)
+
+      // Rebuild whiteboard button
+      const rebuildDesc = document.createElement('div')
+      rebuildDesc.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888); margin: 16px 0 8px 0; line-height: 1.5;'
+      rebuildDesc.textContent = 'Rebuild the entire whiteboard from scratch by re-processing every message pair in the chat. Uses your active (primary) model for full-quality results including hearts, palette, and author notes. Expensive but thorough — use when whiteboard state has been lost.'
+      debugSection.appendChild(rebuildDesc)
+
+      const rebuildBtn = document.createElement('button')
+      rebuildBtn.className = 'novelist-btn novelist-btn-ghost'
+      rebuildBtn.style.cssText = 'width: 100%;'
+      rebuildBtn.textContent = '🔨 Rebuild Whiteboard from History'
+      rebuildBtn.title = 'Reset whiteboard to empty and re-process every exchange using the primary model. Full recovery tool.'
+      rebuildBtn.onclick = () => {
+        if (!confirm('This will reset the whiteboard to empty and rebuild it by re-processing every message pair in the chat using your active model. This may take a while and will use tokens for each exchange. Continue?')) return
+        rebuildBtn.textContent = '⏳ Rebuilding...'
+        rebuildBtn.disabled = true
+        rerunResetBtn.disabled = true
+        rerunKeepBtn.disabled = true
+        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId } })
+      }
+      debugSection.appendChild(rebuildBtn)
+
       container.appendChild(debugSection)
     }
 
@@ -1420,7 +1442,32 @@ export function setup(ctx: SpindleFrontendContext) {
       case 'rerun_error': {
         const data = payload.data as { chatId: string, error: string }
         if (data.chatId === currentChatId) {
-          // Re-render to reset button states
+          renderDrawer()
+        }
+        break
+      }
+
+      case 'rebuild_progress': {
+        const data = payload.data as { chatId: string, step: number, total: number, section: string }
+        if (data.chatId === currentChatId) {
+          // Update the rebuild button text with progress
+          const rebuildBtn = drawerContainer?.querySelector('button[title*="Rebuild"]') as HTMLButtonElement | null
+          if (rebuildBtn) rebuildBtn.textContent = `⏳ ${data.step}/${data.total} — ${data.section}`
+        }
+        break
+      }
+
+      case 'rebuild_complete': {
+        const data = payload.data as { chatId: string }
+        if (data.chatId === currentChatId) {
+          renderDrawer()
+        }
+        break
+      }
+
+      case 'rebuild_error': {
+        const data = payload.data as { chatId: string, error: string }
+        if (data.chatId === currentChatId) {
           renderDrawer()
         }
         break

@@ -1,6 +1,6 @@
 import { getWhiteboard, serializeWhiteboard, commitPendingUpdate, rejectPendingUpdate, saveWhiteboard, createEmptyWhiteboard, applyDelta, savePendingUpdate, getPendingUpdates } from './whiteboard'
 import { queryIntern, formatInternResults } from './intern'
-import { processGenerationEnd } from './updater'
+import { processGenerationEnd, rebuildWhiteboard } from './updater'
 import { getConfig, saveConfig, invalidateConfigCache } from './config'
 import { getArchiveStats, getArchivedMessagesByRange, removeArchivedMessage } from './archive'
 import { createSnapshot, getSnapshotForSwipe, getPreMessageState, getLatestSnapshotForMessage, getSnapshots, removeSnapshotsForMessage, seedFromParent, pruneSnapshots } from './snapshots'
@@ -985,6 +985,43 @@ spindle.onFrontendMessage(async (raw, userId) => {
       } catch (err) {
         spindle.log.error(`[NovelistMemory] Re-run updater failed: ${err}`)
         spindle.sendToFrontend({ type: 'rerun_error', data: { chatId, error: String(err) } }, userId)
+      }
+      break
+    }
+
+    case 'rebuild_whiteboard': {
+      const chatId = payload.data?.chatId as string
+      if (!chatId) return
+
+      spindle.log.info(`[NovelistMemory] Rebuild whiteboard requested for chat ${chatId}`)
+
+      // Auto-reject any pending updates
+      const rebuildPending = await getPendingUpdates(chatId)
+      for (const pending of rebuildPending) {
+        if (pending.status === 'pending') {
+          await rejectPendingUpdate(chatId, pending.id)
+        }
+      }
+      spindle.sendToFrontend({ type: 'rerun_pending_cleared', data: { chatId } }, userId)
+
+      try {
+        spindle.sendToFrontend({ type: 'rebuild_started', data: { chatId } }, userId)
+
+        await rebuildWhiteboard(chatId, userId, (step, total, section) => {
+          spindle.sendToFrontend({
+            type: 'rebuild_progress',
+            data: { chatId, step, total, section },
+          }, userId)
+        })
+
+        const rebuilt = await getWhiteboard(chatId)
+        spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rebuilt } }, userId)
+        spindle.sendToFrontend({ type: 'rebuild_complete', data: { chatId } }, userId)
+        await refreshMacros(chatId)
+        spindle.log.info(`[NovelistMemory] Rebuild whiteboard completed for chat ${chatId}`)
+      } catch (err) {
+        spindle.log.error(`[NovelistMemory] Rebuild whiteboard failed: ${err}`)
+        spindle.sendToFrontend({ type: 'rebuild_error', data: { chatId, error: String(err) } }, userId)
       }
       break
     }

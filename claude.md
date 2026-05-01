@@ -613,6 +613,42 @@ History entries are stored separately from snapshots and are **never pruned**. T
 
 Sections joined with ` · `. Falls back to `empty delta` if nothing changed.
 
+## Rebuild Whiteboard
+
+Full recovery tool. Accessible from the Debug section of the Settings tab. Rebuilds the whiteboard from scratch by re-processing every user+assistant exchange in the chat history.
+
+### How it works
+
+1. Resets whiteboard to empty
+2. Pairs up all user+assistant messages chronologically
+3. For each pair, builds the updater prompt with the *current* whiteboard state (which grows with each iteration) and context from prior messages
+4. Calls the **active (primary) model** — NOT the sidecar — for full-quality results including hearts texture, palette details, voice notes, fragile details
+5. Applies each delta directly to the whiteboard (no pending/review flow)
+6. Sends progress updates to frontend in real-time
+
+### Frontend message: `rebuild_whiteboard`
+- `data.chatId: string` — which chat to rebuild
+
+### Backend responses:
+- `rerun_pending_cleared` — existing pending updates rejected
+- `rebuild_started` — rebuild is starting
+- `rebuild_progress` — `{ step, total, section }` — per-exchange progress
+- `whiteboard_data` — final rebuilt whiteboard
+- `rebuild_complete` — done
+- `rebuild_error` — something failed
+
+### Design decisions
+- Uses active connection (no `connection_id` set) instead of sidecar — rebuilds should produce full-quality entries including emotional texture, not just structural backbone
+- Applies deltas directly instead of going through pending/review flow — this is a recovery tool, not a normal update cycle
+- Continues on per-exchange failures rather than aborting — partial rebuild is better than no rebuild
+- Context window slides forward with each exchange so the sidecar sees prior messages as context
+
+## sourceMessageRange — assistant index only
+
+Chronicle entries are tagged with `sourceMessageRange` for `recall_by_range` lookups. Previously this was `[userIndex, assistantIndex]` (e.g., `[10, 11]`), which was redundant for single exchanges and confusing in the serialized whiteboard (`Messages: #10–#11` when the story content is only in message #11).
+
+Now uses `[assistantIndex, assistantIndex]` — the assistant message is where the story prose lives. Serializer renders single indices as `Message: #11` (no range notation). The range format is preserved for multi-message chronicle entries that span multiple exchanges.
+
 ## Not yet implemented
 
 - **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
