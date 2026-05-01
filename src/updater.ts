@@ -233,6 +233,7 @@ export async function rebuildWhiteboard(
   userId?: string,
   onProgress?: (step: number, total: number, section: string) => void,
   lumiaPersonality?: string,
+  keepExisting?: boolean,
 ): Promise<void> {
   const config = await getConfig()
 
@@ -263,10 +264,15 @@ export async function rebuildWhiteboard(
 
   spindle.log.info(`[NovelistMemory] Rebuild: found ${exchanges.length} exchanges to process`)
 
-  // Reset whiteboard
-  const { createEmptyWhiteboard, saveWhiteboard: saveWb, applyDelta: apply, getCalibrationBank: getCalBank } = await import('./whiteboard')
-  let whiteboard = createEmptyWhiteboard(chatId)
-  await saveWb(whiteboard)
+  const { createEmptyWhiteboard, saveWhiteboard: saveWb, applyDelta: apply, getCalibrationBank: getCalBank, getWhiteboard: getWb } = await import('./whiteboard')
+  let whiteboard: import('./types').Whiteboard
+  if (keepExisting) {
+    whiteboard = await getWb(chatId)
+    spindle.log.info(`[NovelistMemory] Rebuild (keep existing): starting with ${whiteboard.chronicle.length} chronicle, ${whiteboard.threads.length} threads, ${whiteboard.hearts.length} hearts`)
+  } else {
+    whiteboard = createEmptyWhiteboard(chatId)
+    await saveWb(whiteboard)
+  }
 
   // Read Lumia's personality from global and local variables if not provided.
   // The preset sets these via {{setglobalvar::...}} and {{setvar::...}} macros.

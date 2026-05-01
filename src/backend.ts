@@ -991,9 +991,10 @@ spindle.onFrontendMessage(async (raw, userId) => {
 
     case 'rebuild_whiteboard': {
       const chatId = payload.data?.chatId as string
+      const keepExisting = (payload.data?.keepExisting as boolean) ?? false
       if (!chatId) return
 
-      spindle.log.info(`[NovelistMemory] Rebuild whiteboard requested for chat ${chatId}`)
+      spindle.log.info(`[NovelistMemory] Rebuild whiteboard requested for chat ${chatId} (keepExisting: ${keepExisting})`)
 
       // Auto-reject any pending updates
       const rebuildPending = await getPendingUpdates(chatId)
@@ -1012,7 +1013,7 @@ spindle.onFrontendMessage(async (raw, userId) => {
             type: 'rebuild_progress',
             data: { chatId, step, total, section },
           }, userId)
-        })
+        }, undefined, keepExisting)
 
         const rebuilt = await getWhiteboard(chatId)
         spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rebuilt } }, userId)

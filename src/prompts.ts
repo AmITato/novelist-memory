@@ -47,8 +47,55 @@ function formatCalibrationExamples(section: string, bankExamples: string[] | und
   return `\nSTRUCTURAL EXAMPLE for ${section} (match this density — adapt content to YOUR story):\n${defaultExample}\n`
 }
 
-const DEFAULT_CHRONICLE = `[Night 3, 23:40, Magda's Office, 2nd Floor above the bar] | Characters: Magda Koss, Yusuf | Messages: #8–#10
-Yusuf brought the ledger. Magda read it standing, one hand on the window frame — didn't sit, didn't offer him a chair. The columns didn't add up and they both knew it. She asked who else had seen it; he said nobody, too fast. Office smelled like anise liqueur and old radiator dust. Key callback detail: Magda closed the ledger with her left hand and slid it into the desk drawer — the locked one, not the one she uses for show. Emotional register: controlled interrogation masked as casual conversation.`
+const DEFAULT_CHRONICLE = `These are examples from Lumia herself — match this density, this emotional precision, this sensory specificity. Study the annotations after each example to understand WHY each choice was made.
+
+EXAMPLE 1 — High Fantasy (relationship shift through physical detail):
+[Night 4 — Late, after the Goreth Pass ambush, Cliffside camp above the Sevenwash River] | Characters: Väinä, Cassia | Message: #37
+Väinä let Cassia clean the wound on her ribs — the first time she's allowed anyone to touch her unarmored since the desertion. Cassia's hands shook the entire time, not from the cold. The stitching was rough (field surgery, not a healer's hand), and Väinä watched the needle enter her own skin without flinching but flinched when Cassia said 'I'm sorry.' The apology wasn't about the stitching. Neither of them clarified. Callback-worthy: Väinä's hand covered Cassia's to steady it, held for two full seconds beyond what the wound required, then withdrew. The fire had burned to red coals — the only light source was ember-glow and the distant green of the Sevenwash below.
+Emotional states: Väinä — controlled vulnerability, the kind that costs more than bleeding does. Cassia — guilt wearing the mask of medical focus, cracking at the seams.
+Sensory: Woodsmoke and iron (blood on linen). Wet-stone smell of the river gorge. Coals ticking as they collapsed inward. The rasp of boiled thread through skin.
+Key dialogue: "Hold still. — I haven't moved. — Your breathing changed." | "I'm sorry. — [flinch] Don't." | "The fire needs wood. — Leave it."
+WHY THIS WORKS: The hand-hold does ALL the heavy lifting. Two seconds. That's the entire relationship shift — she touched her BEYOND what was needed and they both know it. "Held for two full seconds beyond what the wound required" tells future-you the wall cracked. "Your breathing changed" reveals how closely Cassia watches her.
+
+EXAMPLE 2 — Sci-Fi (hidden thread through environmental wrongness):
+[Cycle 11, third shift — 03:40, Cargo Bay 7, lower ring, Tantalus Station] | Characters: Oku | Message: #90
+Oku ran the routine pressure audit on the lower ring and Bay 7 read 0.3 PSI high — within tolerance but wrong for a sealed bay. She flagged it. Nobody responded. The bay was dark, overheads on power-save, and when she swept her torch across the far wall she saw condensation on interior hull plating — liquid beading on metal that should be bone-dry in regulated atmosphere. She wiped a finger through it. Warm. Condensation doesn't run warm in a cargo bay at 16°C ambient. She sealed the bay and left. Her log entry was edited to 'nominal' by the time she checked from her bunk twenty minutes later. Callback-worthy: the warm condensation, the edited log, Bay 7 directly below the med-wing where Dr. Prastya keeps bio-samples.
+Emotional states: Oku — professional unease hardening into suspicion when the log edit registered.
+Sensory: Recycled air with alkaline scrubber tang. Click-hum of magnetic boots on deck plating. Torch beam cutting through dark — dust motes suspended, no air circulation despite the pressure reading. Silence where ventilation fan noise should be.
+Key dialogue: "Bay Seven, pressure nominal... no. 0.3 over. Logging it." | "[to herself] That's warm. That's — why is that warm."
+WHY THIS WORKS: She barely speaks. Almost entirely environmental storytelling. The sensory context flags what the summary doesn't state outright: "no air circulation despite the pressure reading" — that's wrong. Future-you reads it and knows the pressure is coming from something that isn't atmosphere. The log edit is the thread advancing. Someone is watching.
+
+EXAMPLE 3 — Modern Romance / Slice of Life (emotional beat through what ISN'T said):
+[Saturday — 2:14 AM, Haruki's apartment kitchen, Nakameguro — range hood light on] | Characters: Noor, Haruki | Message: #115
+Noor couldn't sleep and found Haruki already making tamago kake gohan at 2 AM — which meant he couldn't sleep either but neither said so. They stood on opposite sides of the counter. Range hood light put everything in warm amber from the nose down, shadow from the eyes up — half-faces, mouths visible, expressions unreadable. Noor asked about the soy sauce (two bottles; one was his ex-wife's brand, still in the cabinet after eight months). Haruki used the other one without commenting. The silence lasted long enough for the rice to cool. Callback-worthy: Noor's thumb rubbing the lip of her water glass in a continuous circle — she does this when stopping herself from saying something. Haruki noticed. He looked at her thumb, not her face, when he said 'you should stay.' He meant the night. She heard the year.
+Emotional states: Noor — want held under glass, controlled, examined, not yet released. Haruki — the specific courage of someone who's decided to mean something with a mundane sentence and can't take it back.
+Sensory: Range hood light buzzing on lowest setting. Vinegar-salt smell of soy sauce on hot rice. Bare feet on cold kitchen tile. Refrigerator compressor cycling on — a low mechanical hum that filled the silence they wouldn't.
+Key dialogue: "You're up. — Couldn't sleep. — Me either." | "There's two soy sauces. — [reaches past near bottle to far one, no comment]" | "You should stay. — ... Okay."
+WHY THIS WORKS: "He meant the night. She heard the year." — that tells future-you the exact emotional altitude. The ex-wife's soy sauce bottle is a fragile detail doing double duty: Haruki's unresolved past AND Noor's awareness of it. One bottle. So much weight.
+
+EXAMPLE 4 — Horror / Psychological Thriller (atmosphere as character):
+[Day 2 — Late afternoon, Gerda Polzin's house, 14 Rosenweg, Werneuchen — front hallway] | Characters: Tomek | Message: #47
+Tomek used the spare key from under the stone frog. Front door opened without resistance — no chain, no deadbolt, which Gerda never allowed (she triple-locked after the 2019 break-in). The hallway smelled like lavender floor cleaner AND underneath it something older, sweeter, the kind of smell that sits in a room for days. TV was on in the living room — shopping channel, volume at 4, the host describing a ceramic knife set to an empty couch. Gerda's reading glasses sat folded on the side table next to a cup of tea with a skin of milk on the surface. Tea was room temperature. Glasses on the wrong side — she always kept them left, near the lamp, but they were right. Callback-worthy: the ceramic knife set on TV, the glasses on the wrong side, and the lavender cleaner was FRESH — someone mopped recently, but Gerda's shoes were still by the door.
+Emotional states: Tomek — the lag between seeing wrongness and feeling fear, still assembling reasons this is fine, running out of them.
+Sensory: Lavender floor cleaner, sharp and recent, failing to mask a sweet-rot undertone. Shopping channel murmur — a woman's voice listing blade lengths to nobody. Cold tea smell. Hallway carpet had damp spots near kitchen threshold — recent mopping, nap still dark with moisture.
+Key dialogue: "Mama? ... I'm coming in." | "[no response — shopping channel: '—and this eight-inch blade will change the way you think about—']"
+WHY THIS WORKS: Every detail is normal, shifted ONE degree off center — wrong side, cold tea, fresh mop but shoes by the door. Horror isn't stated. It's accumulated. The ceramic knife set on TV is foreshadowing FLAGGED as callback-worthy so future-you doesn't forget.
+
+EXAMPLE 5 — Action / Shonen Battle (combat as character revelation):
+[Round 3 — approximately 1:40 remaining, Underground sparring ring beneath Gōken Dojo, Kabukichō] | Characters: Baz, Ren, referee | Message: #160
+Baz had been fighting defensively for two rounds — absorbing Ren's combinations, reading the rhythm, burning stamina. Standard attrition. Working. Then Ren threw the left hook that Baz's dead brother used to throw — same shoulder rotation, same hip torque, same committed lean. Baz's guard dropped. Not from impact. From recognition. He ate the hook clean, staggered into the chain-link, grabbed it with both hands to stay vertical. Mouthguard fell out. He didn't pick it up. Four seconds of chain-link silence while blood slid from lip to chin. He stared at Ren with an expression that made the referee check if the fight was over. It wasn't. Baz came off the fence and threw the first offensive combination in three rounds. Callback-worthy: the identical left hook (Ren trained at the same gym as Kenji before it closed — lineage, not coincidence, and Baz doesn't know yet). The mouthguard on concrete, not retrieved.
+Emotional states: Baz — recognition-loss-fury compressed into four seconds of chain-link silence, grief converting to violence in real time. Ren — confusion, the hit landed but the reaction was wrong.
+Sensory: Sweat and iron and rubber-mat smell. Halogen buzz overhead, one light flickering. Chain-link singing where Baz grabbed it — high metallic vibration. Crowd noise dropping to nothing during the pause, erupting when he came off the fence.
+Key dialogue: "[corner] Guard UP, Baz! GUARD—" | "[no verbal exchange — the silence IS the dialogue]" | "[after, between combinations] Where'd you learn that hook."
+WHY THIS WORKS: Sometimes the most important dialogue entry is the ABSENCE of speech. The four-second pause where the crowd goes quiet and chain-link vibrates is the beat. "Identical left hook" + "same gym as Kenji" = hidden thread flagged for future discovery. The mouthguard on the floor is composure externalized as an object — when he picks it up later (or doesn't), it means something.
+
+SUMMARY — What these examples teach:
+• Sensory context isn't decoration — it's the room's fingerprint. Three to four specific nouns. No adjective stacking. Future-you should smell/hear/feel the scene from the context alone.
+• Dialogue fragments preserve VOICE, not information. Quote the line that made someone's chest tight. The pauses. The deflections. The silence noted as [no response].
+• "Callback-worthy" is a SPECIFIC flag. Don't say "this might matter." Say WHAT and WHY — "the glasses on the wrong side," "the hand held two seconds too long," "the mouthguard not retrieved."
+• Emotional states should be FELT, not labeled. Don't write "sad." Write "grief converting to violence in real time" or "want held under glass."
+• Source message ranges are NON-NEGOTIABLE. Always. Every entry.
+• One entry per BEAT, not per message. Five messages of kitchen conversation = one entry. One message crossing three locations = three entries. Follow the emotional rhythm, not the message count.`
 
 const DEFAULT_THREAD = `Name: THE MISSING MONTH — Sable's Unaccounted Time
 Status: SEEDED
@@ -131,6 +178,14 @@ export function buildUpdatePrompt(
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
 Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-Lumia will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
 
+SCENE CONTINUITY — This is critical:
+Look at the EXISTING chronicle entries. If the latest entry covers the same scene (same location, same time block, same characters, no major beat change), UPDATE that entry instead of creating a new one. Use "chronicle.update" with the existing entry's ID to:
+• Expand the summary with new developments from this exchange
+• Add new dialogue fragments to verbatimDialogue
+• Update emotionalStates if they shifted
+• Widen sourceMessageRange to include the new message index
+Only create a NEW entry when: the location changes, significant time passes, a major emotional beat lands that deserves its own entry, or the scene's character composition shifts meaningfully.
+
 Entry cadence — NOT every message. Only when:
 • Location or time changes
 • A significant emotional beat lands — the kind that makes you hold your breath
@@ -141,6 +196,7 @@ Five messages of continuous conversation in one room = one Chronicle entry. One 
 
 DON'T: Create entries that are just plot summaries without emotional texture. "They talked about school" is worthless. "She deflected questions about the Commission with aggressive breakfast-making, ears stiff" is gold.
 DON'T: Include meta-commentary like "This was an important scene." The content should make importance self-evident.
+DON'T: Create a new entry for every exchange. If the scene hasn't changed, UPDATE the existing one.
 DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures. These make callbacks feel embodied, not remembered.
 DO: Flag specific callback-worthy details explicitly in the summary. The tiny things — the way someone held a cup, where their eyes went, what they didn't say.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
@@ -327,6 +383,8 @@ export function buildRebuildPrompt(
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
 Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-you will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what you scan to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
 
+SCENE CONTINUITY: Look at existing chronicle entries. If the latest entry covers the same scene (same location, same time, same characters), UPDATE it instead of creating a new one — expand the summary, add dialogue, widen the sourceMessageRange. Only create a NEW entry when the scene actually changes.
+
 Entry cadence — NOT every message. Only when:
 • Location or time changes
 • A significant emotional beat lands
@@ -334,6 +392,7 @@ Entry cadence — NOT every message. Only when:
 • A hidden thread advances or a foreshadowing seed is planted
 
 DON'T: Create entries that are just plot summaries without emotional texture.
+DON'T: Create a new entry for every exchange if the scene hasn't changed.
 DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures.
 DO: Flag specific callback-worthy details explicitly in the summary.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
