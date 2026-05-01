@@ -1129,11 +1129,31 @@ export function setup(ctx: SpindleFrontendContext) {
 
       debugSection.appendChild(debugBtnRow)
 
-      // Rebuild whiteboard buttons
+      // Rebuild whiteboard section
       const rebuildDesc = document.createElement('div')
       rebuildDesc.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888); margin: 16px 0 8px 0; line-height: 1.5;'
-      rebuildDesc.textContent = 'Rebuild the whiteboard by re-processing every message pair using your active (primary) model. "Fresh" resets to empty first. "Keep Existing" preserves current entries and fills gaps — use this when you have good entries you want to keep.'
+      rebuildDesc.textContent = 'Rebuild the whiteboard by re-processing every message pair. "Fresh" resets to empty first. "Keep Existing" preserves current entries and fills gaps.'
       debugSection.appendChild(rebuildDesc)
+
+      // Use Sidecar toggle
+      let rebuildUseSidecar = false
+      const sidecarToggleRow = document.createElement('div')
+      sidecarToggleRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;'
+      const sidecarToggle = document.createElement('div')
+      sidecarToggle.className = 'novelist-switch'
+      sidecarToggle.onclick = () => {
+        rebuildUseSidecar = !rebuildUseSidecar
+        sidecarToggle.classList.toggle('active', rebuildUseSidecar)
+        sidecarLabel.textContent = rebuildUseSidecar
+          ? 'Use Sidecar (cheaper, shorter entries)'
+          : 'Use Primary Model (Lumia quality, higher token cost)'
+      }
+      sidecarToggleRow.appendChild(sidecarToggle)
+      const sidecarLabel = document.createElement('span')
+      sidecarLabel.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888);'
+      sidecarLabel.textContent = 'Use Primary Model (Lumia quality, higher token cost)'
+      sidecarToggleRow.appendChild(sidecarLabel)
+      debugSection.appendChild(sidecarToggleRow)
 
       const rebuildBtnRow = document.createElement('div')
       rebuildBtnRow.style.cssText = 'display: flex; gap: 8px;'
@@ -1142,7 +1162,7 @@ export function setup(ctx: SpindleFrontendContext) {
       rebuildFreshBtn.className = 'novelist-btn novelist-btn-ghost'
       rebuildFreshBtn.style.cssText = 'flex: 1;'
       rebuildFreshBtn.textContent = '🔨 Rebuild (Fresh)'
-      rebuildFreshBtn.title = 'Reset whiteboard to empty and re-process every exchange. Full recovery from scratch.'
+      rebuildFreshBtn.title = 'Reset whiteboard to empty and re-process every exchange.'
       rebuildFreshBtn.onclick = () => {
         if (!confirm('This will RESET the whiteboard to empty and rebuild from scratch. All existing entries will be replaced. Continue?')) return
         rebuildFreshBtn.textContent = '⏳ Rebuilding...'
@@ -1150,7 +1170,7 @@ export function setup(ctx: SpindleFrontendContext) {
         rebuildKeepBtn.disabled = true
         rerunResetBtn.disabled = true
         rerunKeepBtn.disabled = true
-        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: false } })
+        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: false, useSidecar: rebuildUseSidecar } })
       }
       rebuildBtnRow.appendChild(rebuildFreshBtn)
 
@@ -1158,7 +1178,7 @@ export function setup(ctx: SpindleFrontendContext) {
       rebuildKeepBtn.className = 'novelist-btn novelist-btn-ghost'
       rebuildKeepBtn.style.cssText = 'flex: 1;'
       rebuildKeepBtn.textContent = '🔨 Rebuild (Keep Existing)'
-      rebuildKeepBtn.title = 'Re-process every exchange but keep existing entries. Fills in gaps without losing good entries.'
+      rebuildKeepBtn.title = 'Re-process every exchange but keep existing entries. Fills gaps via dedup merge.'
       rebuildKeepBtn.onclick = () => {
         if (!confirm('This will re-process every exchange while keeping existing whiteboard entries. New entries will be merged (deduped). Continue?')) return
         rebuildKeepBtn.textContent = '⏳ Rebuilding...'
@@ -1166,7 +1186,7 @@ export function setup(ctx: SpindleFrontendContext) {
         rebuildFreshBtn.disabled = true
         rerunResetBtn.disabled = true
         rerunKeepBtn.disabled = true
-        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: true } })
+        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: true, useSidecar: rebuildUseSidecar } })
       }
       rebuildBtnRow.appendChild(rebuildKeepBtn)
 

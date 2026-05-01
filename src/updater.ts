@@ -234,6 +234,7 @@ export async function rebuildWhiteboard(
   onProgress?: (step: number, total: number, section: string) => void,
   lumiaPersonality?: string,
   keepExisting?: boolean,
+  useSidecar?: boolean,
 ): Promise<void> {
   const config = await getConfig()
 
@@ -345,19 +346,29 @@ export async function rebuildWhiteboard(
     // Use assistant index for sourceMessageRange
     const messageRange: [number, number] = [exchange.assistant.index, exchange.assistant.index]
 
-    const updatePrompt = buildRebuildPrompt(
-      whiteboard,
-      exchange.user.content,
-      exchange.assistant.content,
-      recentContext,
-      messageRange,
-      calibrationBank,
-      characterContext,
-      lumiaPersonality,
-    )
+    // Use sidecar prompt (third-person, no author notes) or Lumia prompt (first-person, full voice)
+    const updatePrompt = useSidecar
+      ? buildUpdatePrompt(
+          whiteboard,
+          exchange.user.content,
+          exchange.assistant.content,
+          recentContext,
+          messageRange,
+          calibrationBank,
+          characterContext,
+        )
+      : buildRebuildPrompt(
+          whiteboard,
+          exchange.user.content,
+          exchange.assistant.content,
+          recentContext,
+          messageRange,
+          calibrationBank,
+          characterContext,
+          lumiaPersonality,
+        )
 
     try {
-      // Use active connection (primary model), NOT sidecar
       const genRequest: Record<string, unknown> = {
         messages: [
           { role: 'system', content: updatePrompt },
@@ -366,7 +377,12 @@ export async function rebuildWhiteboard(
         parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
       }
       if (userId) genRequest.userId = userId
-      // Deliberately NOT setting connection_id — uses active connection (primary model)
+      // Sidecar mode: use the configured sidecar/updater connection
+      // Primary mode: no connection_id → uses active connection
+      if (useSidecar) {
+        const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
+        if (connectionId) genRequest.connection_id = connectionId
+      }
 
       const response = await spindle.generate.quiet(genRequest) as { content: string }
 
