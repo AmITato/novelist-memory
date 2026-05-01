@@ -452,8 +452,14 @@ export async function rebuildWhiteboard(
     let delta: WhiteboardDelta | null = null
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
+        const reqStart = Date.now()
         const response = await spindle.generate.quiet(genRequest) as { content: string }
-        spindle.log.info(`[NovelistMemory] Rebuild: exchange ${i + 1} response — ${response.content?.length ?? 0} chars, preview: "${(response.content ?? '').slice(0, 200).replace(/\n/g, '\\n')}"`)
+        const elapsed = Date.now() - reqStart
+        const charCount = response.content?.length ?? 0
+        // Rough token estimate (chars / 4) for TPS calculation
+        const estTokens = Math.round(charCount / 4)
+        const tps = elapsed > 0 ? (estTokens / (elapsed / 1000)).toFixed(1) : '?'
+        spindle.log.info(`[NovelistMemory] Rebuild: exchange ${i + 1} response — ${charCount} chars (~${estTokens} tokens) in ${(elapsed / 1000).toFixed(1)}s (~${tps} t/s), preview: "${(response.content ?? '').slice(0, 200).replace(/\n/g, '\\n')}"`)
 
 
         let content = response.content.trim()
