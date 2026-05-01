@@ -702,6 +702,22 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
 })
 
 // ─── Message Deletion Cleanup ───────────────────────────────────────────────
+// Lumiverse fires MESSAGE_DELETED once per message — batch deletes (user deletes
+// messages 11, 10, 9, 8 to rewind to message 7) produce a rapid burst of events.
+//
+// The old approach rewound the whiteboard on every single delete event, each one
+// overwriting the previous rewind and stripping the snapshots that later events
+// needed. The result: by the end of a batch delete, all snapshots were gone and
+// the whiteboard was stuck at whatever the last (often broken) rewind produced.
+//
+// New approach: debounce the rewind. Each delete event immediately cleans up
+// snapshots, pending updates, and archive entries for that message. But the
+// whiteboard rewind is deferred — after a short quiet period (500ms with no new
+// deletes), we look at the remaining snapshots and rewind to the best available
+// state. This handles both single deletes and batch deletes correctly.
+
+let deleteDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let deleteDebounceChat: string | null = null
 
 ;(spindle.on as Function)('MESSAGE_DELETED', async (payload: { chatId: string, messageId: string }, userId?: string) => {
   if (userId) lastKnownUserId = userId
@@ -712,33 +728,11 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
   spindle.log.info(`[NovelistMemory] Message deleted: ${messageId} in chat ${chatId}`)
 
   try {
-    // 1. Try to rewind the whiteboard to the state before this message's generation
-    const snapshot = await getLatestSnapshotForMessage(chatId, messageId)
-    if (snapshot?.preState) {
-      const rewound = structuredClone(snapshot.preState)
-      rewound.chatId = chatId
-      await saveWhiteboard(rewound)
-      spindle.log.info(`[NovelistMemory] Message delete: rewound whiteboard to preState from snapshot ${snapshot.id}`)
-    } else if (snapshot) {
-      // Snapshot exists but no preState — try the getPreMessageState fallback
-      // (finds the latest snapshot belonging to a different message)
-      const fallbackState = await getPreMessageState(chatId, messageId)
-      if (fallbackState) {
-        const rewound = structuredClone(fallbackState)
-        rewound.chatId = chatId
-        await saveWhiteboard(rewound)
-        spindle.log.info(`[NovelistMemory] Message delete: rewound whiteboard to prior message state`)
-      } else {
-        spindle.log.info(`[NovelistMemory] Message delete: no prior state found, whiteboard unchanged`)
-      }
-    } else {
-      spindle.log.info(`[NovelistMemory] Message delete: no snapshot found for ${messageId}, whiteboard unchanged`)
-    }
-
-    // 2. Remove all snapshots for this message
+    // Immediate cleanup — safe to do per-event, no ordering issues
+    // 1. Remove all snapshots for this message
     await removeSnapshotsForMessage(chatId, messageId)
 
-    // 3. Remove pending updates sourced from this message
+    // 2. Remove pending updates sourced from this message
     const pendingList = await getPendingUpdates(chatId)
     for (const pending of pendingList) {
       if (pending.sourceMessageId === messageId) {
@@ -747,17 +741,60 @@ spindle.on('MESSAGE_SWIPED', async (payload) => {
       }
     }
 
-    // 4. Remove archive entries for this message
+    // 3. Remove archive entries for this message
     const removed = await removeArchivedMessage(chatId, messageId)
     if (removed) spindle.log.info(`[NovelistMemory] Message delete: removed archive entry for ${messageId}`)
 
-    // 5. Notify frontend
-    const updatedWb = await getWhiteboard(chatId)
-    spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: updatedWb } }, lastKnownUserId ?? undefined)
-    await refreshMacros(chatId)
   } catch (err) {
     spindle.log.error(`[NovelistMemory] Message deletion cleanup failed for ${messageId}: ${err}`)
   }
+
+  // Debounced rewind — wait for the burst of deletes to settle, then rewind once
+  if (deleteDebounceTimer) clearTimeout(deleteDebounceTimer)
+  deleteDebounceChat = chatId
+
+  deleteDebounceTimer = setTimeout(async () => {
+    deleteDebounceTimer = null
+    const targetChatId = deleteDebounceChat
+    deleteDebounceChat = null
+    if (!targetChatId) return
+
+    try {
+      // After all deletes have been processed, find the best rewind target
+      // from the remaining snapshots
+      const remainingSnaps = await getSnapshots(targetChatId)
+
+      if (remainingSnaps.length > 0) {
+        // Use the latest remaining snapshot's state — it represents the
+        // whiteboard as it was after the last surviving message's generation
+        const latest = remainingSnaps[remainingSnaps.length - 1]
+        const rewound = structuredClone(latest.state)
+        rewound.chatId = targetChatId
+        await saveWhiteboard(rewound)
+        spindle.log.info(`[NovelistMemory] Message delete rewind: restored from latest surviving snapshot ${latest.id} (msg ${latest.messageId}, idx ${latest.messageIndex})`)
+      } else {
+        // No snapshots remain. The whiteboard may still have content from
+        // generations that predated the snapshot system or whose snapshots
+        // were pruned. Don't nuke it — leave it as-is.
+        const currentWb = await getWhiteboard(targetChatId)
+        const hasContent = currentWb.chronicle.length > 0
+          || currentWb.threads.length > 0
+          || currentWb.hearts.length > 0
+        if (hasContent) {
+          spindle.log.info(`[NovelistMemory] Message delete rewind: no snapshots remain but whiteboard has content (${currentWb.chronicle.length} chronicle, ${currentWb.threads.length} threads, ${currentWb.hearts.length} hearts) — leaving unchanged`)
+        } else {
+          spindle.log.info(`[NovelistMemory] Message delete rewind: no snapshots remain and whiteboard is empty — nothing to do`)
+        }
+      }
+
+      // Notify frontend with the final state
+      const finalWb = await getWhiteboard(targetChatId)
+      spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId: targetChatId, whiteboard: finalWb } }, lastKnownUserId ?? undefined)
+      await refreshMacros(targetChatId)
+    } catch (err) {
+      spindle.log.error(`[NovelistMemory] Message delete debounced rewind failed: ${err}`)
+    }
+  }, 500)
 })
 
 // ─── Fork Seeding ───────────────────────────────────────────────────────────

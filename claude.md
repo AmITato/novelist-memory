@@ -621,3 +621,51 @@ Sections joined with ` · `. Falls back to `empty delta` if nothing changed.
 - ~~**Connection picker UI**~~ — implemented: Settings tab lists available connections via `spindle.connections.list()` as `<select>` dropdowns
 - **Calibration bank UI** — frontend interface for populating per-chat calibration examples (currently requires manual JSON editing)
 - ~~**`removeSnapshotsForMessage` cleanup**~~ — now called by the `MESSAGE_DELETED` handler for full cleanup on message deletion.
+
+## Bug #18: Regen rewind nukes whiteboard when no prior-message snapshots exist
+
+**Symptom:** Chronicle entries (and potentially other whiteboard content) vanish when regenerating a message at or near the sliding window boundary (~message 11 with window size 6). The whiteboard goes empty, then only gets the sidecar's new entries for the current generation.
+
+**Root cause:** `performRegenRewind` Tier 3 assumed "target message has snapshots but no other messages have snapshots" meant "this is the first message of the chat, safe to reset to empty whiteboard." This assumption is wrong when:
+- The chat has been running for many messages but older message snapshots were pruned (retention defaults: keep all swipes for last 1 message, latest snapshot for last 10 messages)
+- The chat predates the snapshot system (snapshots were never created for earlier messages)
+- Only the most recent message has snapshots because earlier ones never generated (e.g., tool-call-only messages, impersonate skips)
+
+In all these cases, the whiteboard has accumulated content (chronicle, threads, hearts) from those earlier messages — content that exists ONLY in the whiteboard JSON, not in any snapshot. Tier 3's empty reset destroys it irreversibly.
+
+**Timeline of the specific incident:**
+1. Messages 0-10 built up whiteboard state (chronicle entries, threads, hearts, etc.)
+2. Message 11 generated (swipe 0) — snapshot created for message 11
+3. No snapshots existed for messages 0-10 (pruned or never created)
+4. User regenerated message 11 → `performRegenRewind` runs
+5. Tier 1: Found snapshot for message 11, but `preState` was undefined (snapshot created before preState feature or first-gen scenario)
+6. Tier 2: No other-message snapshots exist → returns null
+7. Tier 3: Target has snapshots, no other messages have snapshots → **resets to empty whiteboard** 💀
+8. All chronicle/thread/heart content from messages 0-10 permanently lost
+
+**Fix:** Tier 3 now checks whether the current whiteboard has substantial content (chronicle, threads, or hearts) before resetting to empty. If it does, the reset is skipped and the whiteboard is left unchanged — the existing state is the best approximation of pre-message state available. The empty reset only fires when the whiteboard is actually empty/trivial (the genuine first-message case).
+
+## Bug #19: MESSAGE_DELETED handler cascade destroys snapshots and whiteboard during batch deletes
+
+**Symptom:** User deletes multiple messages to rewind to an earlier point (e.g., deletes messages 11, 10, 9, 8 to get back to message 7). After the deletes, the whiteboard is empty or corrupted — all chronicle entries, threads, hearts lost.
+
+**Root cause:** `MESSAGE_DELETED` fires once per message. The old handler did THREE destructive things on every single event:
+1. **Rewound the whiteboard** to the deleted message's snapshot `preState` (or fallback)
+2. **Removed all snapshots** for the deleted message via `removeSnapshotsForMessage`
+3. Cleaned up pending updates and archive entries (fine)
+
+During a batch delete (messages 11→8), the cascade was:
+- Delete message 11: finds snapshot, rewinds to preState, **removes message 11's snapshots**
+- Delete message 10: no snapshot (pruned/never existed), whiteboard unchanged, removes message 10's snapshots
+- Delete message 9: no snapshot, whiteboard unchanged, removes message 9's snapshots
+- Delete message 8: no snapshot, whiteboard unchanged, removes message 8's snapshots
+- Result: ALL snapshots destroyed. Whiteboard stuck at whatever message 11's rewind produced (which might be empty due to Bug #18).
+
+The next generation then hit `performRegenRewind` Tier 3 → empty reset → everything gone.
+
+**Fix:** Debounced the whiteboard rewind. Each `MESSAGE_DELETED` event still immediately cleans up snapshots, pending updates, and archive entries for that specific message (safe to do per-event). But the whiteboard rewind is deferred behind a 500ms debounce timer. After the burst of delete events settles:
+- If surviving snapshots exist → rewind to the latest one's state
+- If no snapshots remain but whiteboard has content → leave unchanged (don't nuke accumulated state)
+- If no snapshots and whiteboard is empty → nothing to do
+
+This handles both single deletes (rewind after 500ms) and batch deletes (wait for all deletes to finish, then rewind once using whatever snapshots survived).
