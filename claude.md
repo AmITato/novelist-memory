@@ -613,21 +613,63 @@ History entries are stored separately from snapshots and are **never pruned**. T
 
 Sections joined with ` · `. Falls back to `empty delta` if nothing changed.
 
+## Chronicle scene continuity
+
+The updater prompt now instructs the sidecar (and rebuild prompt instructs Lumia) to **update existing chronicle entries** when the scene continues, instead of always creating new ones. This prevents the one-entry-per-exchange bloat.
+
+The guidance says: look at existing chronicle entries. If the latest one covers the same scene (same location, same time block, same characters, no major beat change), use `chronicle.update` with the existing entry's ID to:
+- Expand the summary with new developments
+- Add new dialogue fragments to verbatimDialogue
+- Update emotionalStates if they shifted
+- Widen sourceMessageRange to include the new message index
+
+Only create a NEW entry when the scene actually changes (location, time, character composition, or a major emotional beat that deserves its own entry).
+
+This applies to both the normal sidecar prompt (`buildUpdatePrompt`) and the rebuild prompt (`buildRebuildPrompt`).
+
+## Chronicle calibration examples
+
+The generic calibration examples (Magda/Yusuf) have been replaced with six genre-spanning examples written by Lumia herself. Each example demonstrates a specific narrative technique and includes Lumia's annotations explaining WHY each choice works — she's teaching her own sidecar like a mentor training an intern.
+
+The examples cover:
+1. **High Fantasy** — relationship shift through a single physical detail (hand-hold beyond what the wound required)
+2. **Sci-Fi** — hidden thread advancement through environmental wrongness (warm condensation, edited log)
+3. **Modern Romance** — emotional beat through what ISN'T said ("He meant the night. She heard the year.")
+4. **Horror** — atmosphere as accumulated wrongness (every detail normal, shifted one degree off center)
+5. **Shonen Battle** — combat as character revelation (the silence IS the dialogue)
+6. **Historical/Political** — subtext-dense scene where the real conversation happens underneath the spoken one
+
+The annotations teach:
+- Sensory context = room's fingerprint (3-4 specific nouns, no adjective stacking)
+- Dialogue preserves VOICE, not information (quote the line that made someone's chest tight)
+- "Callback-worthy" = specific flag (WHAT and WHY, not "this might matter")
+- Emotional states should be FELT ("grief converting to violence in real time"), not labeled ("sad")
+- Source message ranges are non-negotiable
+- One entry per BEAT, not per message
+
+These fire as calibration examples when chronicle entries are sparse (< 3 entries). Once the whiteboard has 3+ chronicle entries, the existing entries serve as the style guide and the examples are no longer injected.
+
 ## Rebuild Whiteboard
 
-Full recovery tool. Accessible from the Debug section of the Settings tab. Rebuilds the whiteboard from scratch by re-processing every user+assistant exchange in the chat history.
+Recovery and population tool. Accessible from the Debug section of the Settings tab. Re-processes every user+assistant exchange in the chat history using the primary model.
+
+### Two modes
+
+- **🔨 Rebuild (Fresh)** — Resets whiteboard to empty, then processes every exchange from scratch. Use when the whiteboard is corrupted or you want a clean slate.
+- **🔨 Rebuild (Keep Existing)** — Keeps current whiteboard entries and processes every exchange. New entries are merged via `applyDelta`'s dedup logic (same chronicle ID → merge, same thread name → merge, same heart from→to → merge). Use when you have good entries (e.g., Lumia-regenerated ones) that you want to preserve while filling in gaps.
 
 ### How it works
 
-1. Resets whiteboard to empty
+1. If Fresh mode: resets whiteboard to empty. If Keep Existing: leaves whiteboard as-is.
 2. Pairs up all user+assistant messages chronologically
-3. For each pair, builds the updater prompt with the *current* whiteboard state (which grows with each iteration) and context from prior messages
-4. Calls the **active (primary) model** — NOT the sidecar — for full-quality results including hearts texture, palette details, voice notes, fragile details
+3. For each pair, builds the **Lumia-voiced rebuild prompt** (not the sidecar prompt) with the *current* whiteboard state and context from prior messages
+4. Calls the **active (primary) model** — NOT the sidecar — for full-quality results including hearts texture, palette details, voice notes, fragile details, and author notes
 5. Applies each delta directly to the whiteboard (no pending/review flow)
 6. Sends progress updates to frontend in real-time
 
 ### Frontend message: `rebuild_whiteboard`
 - `data.chatId: string` — which chat to rebuild
+- `data.keepExisting: boolean` — if true, preserve current entries (default: false)
 
 ### Backend responses:
 - `rerun_pending_cleared` — existing pending updates rejected
