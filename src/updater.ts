@@ -225,7 +225,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
-      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: { type: 'json_object' } },
     }
     if (connectionId) genRequest.connection_id = connectionId
     if (userId) genRequest.userId = userId
@@ -439,7 +439,7 @@ export async function rebuildWhiteboard(
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
-      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: { type: 'json_object' } },
     }
     if (userId) genRequest.userId = userId
     if (useSidecar) {
@@ -565,7 +565,7 @@ async function checkAndArchiveMessages(chatId: string, userId?: string): Promise
           { role: 'system', content: metadataPrompt },
           { role: 'user', content: 'Extract metadata.' },
         ],
-        parameters: { temperature: 0.1, max_tokens: 500 },
+        parameters: { temperature: 0.1, max_tokens: 500, response_format: { type: 'json_object' } },
       }
       if (metaConnId) metaGenRequest.connection_id = metaConnId
       if (userId) metaGenRequest.userId = userId

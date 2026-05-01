@@ -40,7 +40,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
         { role: 'system', content: internSystemPrompt },
         { role: 'user', content: `Find scenes relevant to: ${query.query}` },
       ],
-      parameters: { temperature: 0.2, max_tokens: 2000 },
+      parameters: { temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' } },
     }
     if (internConnId) internGenRequest.connection_id = internConnId
     if (userId) internGenRequest.userId = userId
@@ -98,7 +98,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
           { role: 'system', content: annotationPrompt },
           { role: 'user', content: 'Annotate this scene.' },
         ],
-        parameters: { temperature: 0.2, max_tokens: 500 },
+        parameters: { temperature: 0.2, max_tokens: 500, response_format: { type: 'json_object' } },
       }
       if (internConnId) annotGenRequest.connection_id = internConnId
       if (userId) annotGenRequest.userId = userId
