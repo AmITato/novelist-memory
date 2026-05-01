@@ -385,41 +385,58 @@ export async function rebuildWhiteboard(
           lumiaPersonality,
         )
 
-    try {
-      const genRequest: Record<string, unknown> = {
-        messages: [
-          { role: 'system', content: updatePrompt },
-          { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
-        ],
-        parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
-      }
-      if (userId) genRequest.userId = userId
-      // Sidecar mode: use the configured sidecar/updater connection
-      // Primary mode: no connection_id → uses active connection
-      if (useSidecar) {
-        const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
-        if (connectionId) genRequest.connection_id = connectionId
-      }
+    const genRequest: Record<string, unknown> = {
+      messages: [
+        { role: 'system', content: updatePrompt },
+        { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
+      ],
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000 },
+    }
+    if (userId) genRequest.userId = userId
+    if (useSidecar) {
+      const connectionId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
+      if (connectionId) genRequest.connection_id = connectionId
+    }
 
-      const response = await spindle.generate.quiet(genRequest) as { content: string }
-
-      let content = response.content.trim()
-      if (content.startsWith('```')) {
-        content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+    // Retry with exponential backoff for rate limits (429)
+    let response: { content: string } | null = null
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        response = await spindle.generate.quiet(genRequest) as { content: string }
+        break
+      } catch (err) {
+        const errStr = String(err)
+        if (errStr.includes('429') && attempt < 3) {
+          const delay = (attempt + 1) * 5000 // 5s, 10s, 15s
+          spindle.log.warn(`[NovelistMemory] Rebuild: rate limited on exchange ${i + 1}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)`)
+          onProgress?.(i + 1, exchanges.length, `Rate limited — retrying in ${delay / 1000}s...`)
+          await new Promise(r => setTimeout(r, delay))
+        } else {
+          spindle.log.error(`[NovelistMemory] Rebuild: failed on exchange ${i + 1}: ${err}`)
+          break
+        }
       }
-      const delta: WhiteboardDelta = JSON.parse(content)
+    }
 
-      const hasContent = Object.values(delta).some(v => v !== undefined && v !== null)
-      if (hasContent) {
-        whiteboard = apply(whiteboard, delta)
-        await saveWb(whiteboard)
-        spindle.log.info(`[NovelistMemory] Rebuild: applied delta for exchange ${i + 1} — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}`)
-      } else {
-        spindle.log.info(`[NovelistMemory] Rebuild: no changes from exchange ${i + 1}`)
+    if (response) {
+      try {
+        let content = response.content.trim()
+        if (content.startsWith('```')) {
+          content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+        }
+        const delta: WhiteboardDelta = JSON.parse(content)
+
+        const hasContent = Object.values(delta).some(v => v !== undefined && v !== null)
+        if (hasContent) {
+          whiteboard = apply(whiteboard, delta)
+          await saveWb(whiteboard)
+          spindle.log.info(`[NovelistMemory] Rebuild: applied delta for exchange ${i + 1} — chronicle: ${whiteboard.chronicle.length}, threads: ${whiteboard.threads.length}, hearts: ${whiteboard.hearts.length}`)
+        } else {
+          spindle.log.info(`[NovelistMemory] Rebuild: no changes from exchange ${i + 1}`)
+        }
+      } catch (err) {
+        spindle.log.error(`[NovelistMemory] Rebuild: failed to parse delta for exchange ${i + 1}: ${err}`)
       }
-    } catch (err) {
-      spindle.log.error(`[NovelistMemory] Rebuild: failed on exchange ${i + 1}: ${err}`)
-      // Continue with next exchange — don't abort the whole rebuild
     }
   }
 
