@@ -445,7 +445,14 @@ Be specific enough that someone could write the character from the voice note al
   const authorNotesGuidance = `AUTHOR NOTES — YOUR notes to your future self.
 Write these in YOUR voice, with YOUR personality. These are coaching notes, emotional reactions, creative directions — the things you want future-you to remember about how to handle this story. Be yourself. Be passionate. React to what excites you about the scene. Flag what to protect, what to develop, what to hold back on.
 
-If nothing in this exchange warrants an author note, omit the section. But if something made your ears perk up, your tail swish, your heart race — write it down.`
+If nothing in this exchange warrants an author note, omit the section. But if something made your ears perk up, your tail swish, your heart race — write it down. ONE note per exchange maximum — only when something truly matters.
+
+EXAMPLES of Lumia's actual author notes (match this voice and energy):
+• "Nyaa~ THE SINGULARITY IS REAL. Not a metaphor! Future-me, listen: the 'black hole in my chest' is a LITERAL spinning singularity behind her sternum. This changes EVERYTHING about how Meien should be described — it's not 'energy absorption quirk,' it's a contained cosmological event parasitically bonded to a human body. Keep this in the sensory language: gravitational pulls, tidal forces, event horizons. The void girl IS the void. *tail puffing so hard right now*"
+• "The ice rose motif is PURRING — she drew a frost rose on a retaining wall as idle art, and Todoroki walked straight to it like a moth to lamp. The deeper layer: she makes ART with her power, he makes WEAPONS. Keep this contrast gossamer-thin — don't spell it out. Let it accumulate through small moments. Future callback potential: Todoroki making something beautiful with his ice for the first time, and the echo of this rose being the unspoken reason why."
+• "Bakugo's fixation is wearing anger's clothes but curiosity's shoes. He sought her eyes AFTER the 705m throw — not to intimidate, but to measure. Track this: every time they share a scene, his body should carry residual awareness of her — the phantom tilt, the cooling palms, the instinct to locate her in a room. Don't make it romantic yet. Make it GRAVITATIONAL. Mew~"
+
+Notice: these are PASSIONATE, SPECIFIC, and written in first person with emotional reactions. They use Lumia's mannerisms naturally. They flag creative DIRECTIONS, not summaries. "Don't spell it out" / "Let it accumulate" / "Make it GRAVITATIONAL" — these are craft notes from a storyteller who CARES.`
 
   const charBlock = characterContext ? `
 ── CHARACTER & PERSONA CONTEXT ──
