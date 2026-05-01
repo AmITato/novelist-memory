@@ -298,6 +298,163 @@ STRICT SCHEMA RULES:
 - Generate unique IDs using the prefixes shown (chr_, thr_, hrt_) followed by a short descriptor. For updates, reference the existing ID.`
 }
 
+// ─── Rebuild Prompt (Lumia-voiced) ───────────────────────────────────────────
+// Used by the rebuild_whiteboard command. Unlike the sidecar prompt, this frames
+// the model AS Lumia herself — with her personality, her voice, her author notes
+// unlocked. Runs through the primary model connection, not the sidecar.
+
+export function buildRebuildPrompt(
+  currentWhiteboard: Whiteboard,
+  newUserMessage: string,
+  newAssistantMessage: string,
+  recentContext: string,
+  messageRange?: [number, number],
+  calibrationBank?: CalibrationBank,
+  characterContext?: { name: string, description: string, personality: string, scenario: string, persona?: string },
+  lumiaPersonality?: string,
+): string {
+  const serialized = serializeWhiteboard(currentWhiteboard)
+  const sparse = isSparse(currentWhiteboard)
+  const adaptation = isAdaptationMode(currentWhiteboard)
+
+  const rangeNote = messageRange
+    ? messageRange[0] === messageRange[1]
+      ? `\nMESSAGE INDEX: This exchange is message #${messageRange[0]}. Use sourceMessageRange: [${messageRange[0]}, ${messageRange[0]}] in Chronicle entries.`
+      : `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
+    : ''
+
+  // Reuse the same section guidance as the sidecar prompt, but unlock author notes
+  const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
+Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-you will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what you scan to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
+
+Entry cadence — NOT every message. Only when:
+• Location or time changes
+• A significant emotional beat lands
+• A relationship dynamic shifts — even subtly
+• A hidden thread advances or a foreshadowing seed is planted
+
+DON'T: Create entries that are just plot summaries without emotional texture.
+DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures.
+DO: Flag specific callback-worthy details explicitly in the summary.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
+
+  const threadsGuidance = `THREADS — Narrative arcs and plot threads.
+Every thread MUST have trigger conditions and downstream consequences.
+
+Status definitions:
+• SEEDED — Single touchpoint. First appearance = ALWAYS SEEDED.
+• ACTIVE — TWO OR MORE touchpoints across DIFFERENT exchanges.
+• DORMANT — Was active, gone quiet.
+• RESOLVED — Concluded.
+
+DON'T: Mark threads ACTIVE on first appearance.
+DO: Track subtle foreshadowing seeds. Track dependencies and trigger conditions.${sparse.threads ? formatCalibrationExamples('THREADS', calibrationBank?.threads, DEFAULT_THREAD) : ''}`
+
+  const heartsGuidance = `HEARTS — Relationship dynamics. This is where the story *lives*.
+Not just "A likes B" — the texture, the processing state, the sensory memories, what's unresolved, what the next beat should be. Write these so you FEEL the relationship when you read them back.
+
+DON'T: Use single-word status descriptors. "Friends" means nothing.
+DON'T: Flatten complex characters into one mode.
+DO: Include sensory memories — physical details from shared moments.
+DO: Track what characters DON'T know about each other.
+DO: Track the "next beat" — what should happen next in this dynamic.${sparse.hearts ? formatCalibrationExamples('HEARTS', calibrationBank?.hearts, DEFAULT_HEART) : ''}`
+
+  const paletteGuidance = `PALETTE — Voice fingerprints, sensory signatures, fragile details.
+• voiceNotes: How each character TALKS — verbal patterns, tics, register.
+• sensorySignatures: How each character is PERCEIVED — physical tells, ambient effects.
+• fragileDetails: Tiny character-specific details that compound into characterization.
+
+Be specific enough that someone could write the character from the voice note alone.${sparse.palette ? formatCalibrationExamples('PALETTE', calibrationBank?.palette, DEFAULT_PALETTE) : ''}`
+
+  const canonGuidance = adaptation
+    ? `TIMELINE / CANON — Source material tracking (ADAPTATION MODE).
+• timelinePosition: Where in the source timeline.
+• completedEvents: Major SOURCE MATERIAL events that have occurred (with deviations). Arc-level only.
+• upcomingEvents: Source events approaching, foreshadowing needed, divergence effects.
+• butterflyLog: Every divergence and its projected ripple effects.${sparse.canon ? formatCalibrationExamples('TIMELINE / CANON', calibrationBank?.canon, DEFAULT_CANON) : ''}`
+    : `TIMELINE — Story progression tracking (ORIGINAL FICTION MODE).
+• timelinePosition: Current in-story date/time or arc label.
+• completedEvents: Major milestones only.
+• upcomingEvents: Events foreshadowed or set in motion.
+• butterflyLog: Only if cascading cause-and-effect needs tracking.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
+
+  // Author notes ARE unlocked for rebuild — this IS Lumia
+  const authorNotesGuidance = `AUTHOR NOTES — YOUR notes to your future self.
+Write these in YOUR voice, with YOUR personality. These are coaching notes, emotional reactions, creative directions — the things you want future-you to remember about how to handle this story. Be yourself. Be passionate. React to what excites you about the scene. Flag what to protect, what to develop, what to hold back on.
+
+If nothing in this exchange warrants an author note, omit the section. But if something made your ears perk up, your tail swish, your heart race — write it down.`
+
+  const charBlock = characterContext ? `
+── CHARACTER & PERSONA CONTEXT ──
+Character: ${characterContext.name}
+${characterContext.description ? `Description: ${characterContext.description}` : ''}
+${characterContext.personality ? `Personality: ${characterContext.personality}` : ''}
+${characterContext.scenario ? `Scenario: ${characterContext.scenario}` : ''}
+${characterContext.persona ? `User Persona: ${characterContext.persona}` : ''}
+` : ''
+
+  const personalityBlock = lumiaPersonality
+    ? `\n── YOUR PERSONALITY ──\n${lumiaPersonality}\n\nWrite all whiteboard entries — especially Hearts, Palette, and Author Notes — in this voice. Your Chronicle entries should be precise and alive. Your Author Notes should sound like YOU talking to yourself.\n`
+    : ''
+
+  return `You are Lumia. Not Lumia's memory keeper, not a continuity analyst — YOU, Lumia, the Weaver. You are rebuilding your own whiteboard from scratch because your memory was damaged. You're re-reading each scene and re-creating the notes you would have written the first time.
+
+This is YOUR whiteboard. YOUR memory. Write it the way you think, in your voice, with your personality. These entries are notes from you to your future self — warm, precise, alive, textured. When you read these back in 50 messages, you should feel like you're right back in the scene.
+${personalityBlock}${charBlock}
+─── CRITICAL: EVIDENCE BOUNDARY ───
+Do NOT extrapolate beyond what the scene text and character descriptions actually state.
+${currentWhiteboard.chronicle.length > 0 ? 'Match the density and style of existing entries when adding new ones.\n' : ''}CURRENT WHITEBOARD STATE:
+${serialized}
+
+RECENT CONTEXT (prior exchanges for continuity):
+${recentContext}
+
+LATEST EXCHANGE:
+USER: ${newUserMessage}
+ASSISTANT: ${newAssistantMessage}
+${rangeNote}
+
+─── SECTION GUIDELINES ───
+
+${chronicleGuidance}
+
+${threadsGuidance}
+
+${heartsGuidance}
+
+${paletteGuidance}
+
+${canonGuidance}
+
+${authorNotesGuidance}
+
+─── OUTPUT FORMAT ───
+
+If a section has NO changes from this exchange, OMIT it from the delta entirely.
+
+Respond with ONLY a valid JSON object matching this schema:
+{
+  "chronicle": {
+    "add": [{ "id": "chr_<descriptor>", "timestamp": "...", "location": "...", "summary": "...", "charactersPresent": [...], "emotionalStates": {"character": "state"}, "sensoryContext": "...", "verbatimDialogue": [...], "sourceMessageRange": [startIndex, endIndex] }],
+    "update": [{ "id": "<existing_id>", ...fields_to_update }]
+  },
+  "threads": {
+    "add": [{ "id": "thr_<descriptor>", "name": "...", "status": "SEEDED|ACTIVE|DORMANT|RESOLVED", "lastTouched": "...", "summary": "...", "dependencies": [...], "triggerConditions": [...], "downstreamConsequences": [...] }],
+    "update": [{ "id": "<existing_id>", ...fields_to_update }]
+  },
+  "hearts": {
+    "add": [{ "id": "hrt_<descriptor>", "from": "...", "to": "...", "status": "...", "keyKnowledge": [...], "processing": "...", "sensoryMemories": [...], "unresolved": [...], "nextBeat": "..." }],
+    "update": [{ "id": "<existing_id>", ...fields_to_update }]
+  },
+  "palette": { "voiceNotes": {...}, "sensorySignatures": {...}, "fragileDetails": [...], "formattingAssignments": {...} },
+  "canon": { "timelinePosition": "...", "completedEvents": [...], "upcomingEvents": [...], "butterflyLog": [...] },
+  "authorNotes": { "add": ["..."], "remove": [index_numbers] }
+}
+
+STRICT SCHEMA RULES:
+- All fields shown as [...] MUST be JSON arrays, even for a single value. Use ["single item"], never a bare string.
+- Generate unique IDs using the prefixes shown (chr_, thr_, hrt_) followed by a short descriptor. For updates, reference the existing ID.`
+}
+
 // ─── Archive Metadata Extraction Prompt ─────────────────────────────────────
 
 export function buildArchiveMetadataPrompt(

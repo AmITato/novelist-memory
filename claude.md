@@ -637,11 +637,27 @@ Full recovery tool. Accessible from the Debug section of the Settings tab. Rebui
 - `rebuild_complete` — done
 - `rebuild_error` — something failed
 
+### Lumia personality injection
+
+The rebuild prompt frames the model **as Lumia herself**, not as "Lumia's memory keeper" (the sidecar framing). This means:
+- Author notes are unlocked — Lumia writes them in her own voice
+- Hearts entries get emotional texture, not just structural correctness
+- Palette/fragile details are written with Lumia's sensibility
+
+Lumia's personality is loaded automatically from Lumiverse's variable system:
+- **Global variables** (`spindle.variables.global.list()`): reads all `lumia_personality_*` keys (set by `{{setglobalvar::lumia_personality_neko::...}}` etc.)
+- **Local/chat variables** (`spindle.variables.local.list(chatId)`): reads all `lumia_behavior_*` keys (set by `{{setvar::lumia_behavior_neko::...}}` etc.)
+- Also checks for a `lumiaPersonality` variable (the `{{lumiaPersonality}}` composite macro)
+
+The personality text is injected into a dedicated `── YOUR PERSONALITY ──` block in the rebuild prompt, telling the model to write all entries — especially Hearts, Palette, and Author Notes — in that voice.
+
 ### Design decisions
 - Uses active connection (no `connection_id` set) instead of sidecar — rebuilds should produce full-quality entries including emotional texture, not just structural backbone
+- Frames the model AS Lumia (first person) instead of as a third-party analyst — unlocks author notes and personality-driven entries
+- Reads Lumia's personality from Lumiverse's variable system automatically — no manual configuration needed
 - Applies deltas directly instead of going through pending/review flow — this is a recovery tool, not a normal update cycle
 - Continues on per-exchange failures rather than aborting — partial rebuild is better than no rebuild
-- Context window slides forward with each exchange so the sidecar sees prior messages as context
+- Context window slides forward with each exchange so the model sees prior messages as context
 
 ## sourceMessageRange — assistant index only
 

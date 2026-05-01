@@ -3,7 +3,7 @@ import type { WhiteboardDelta, PendingUpdate, ArchivedMessage } from './types'
 import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates, getCalibrationBank } from './whiteboard'
 import { archiveMessages, getArchive } from './archive'
 import { getConfig, resolveBackgroundConnectionId } from './config'
-import { buildUpdatePrompt, buildArchiveMetadataPrompt } from './prompts'
+import { buildUpdatePrompt, buildRebuildPrompt, buildArchiveMetadataPrompt } from './prompts'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
@@ -232,6 +232,7 @@ export async function rebuildWhiteboard(
   chatId: string,
   userId?: string,
   onProgress?: (step: number, total: number, section: string) => void,
+  lumiaPersonality?: string,
 ): Promise<void> {
   const config = await getConfig()
 
@@ -266,6 +267,35 @@ export async function rebuildWhiteboard(
   const { createEmptyWhiteboard, saveWhiteboard: saveWb, applyDelta: apply, getCalibrationBank: getCalBank } = await import('./whiteboard')
   let whiteboard = createEmptyWhiteboard(chatId)
   await saveWb(whiteboard)
+
+  // Read Lumia's personality from global and local variables if not provided.
+  // The preset sets these via {{setglobalvar::...}} and {{setvar::...}} macros.
+  if (!lumiaPersonality) {
+    const personalityParts: string[] = []
+    try {
+      const globalVars = await spindle.variables.global.list(userId)
+      const localVars = await spindle.variables.local.list(chatId)
+
+      // Collect all lumia_personality_* and lumia_behavior_* variables
+      for (const [key, value] of Object.entries(globalVars)) {
+        if (key.startsWith('lumia_personality_') && value) personalityParts.push(value)
+      }
+      for (const [key, value] of Object.entries(localVars)) {
+        if (key.startsWith('lumia_behavior_') && value) personalityParts.push(value)
+      }
+
+      // Also check for a lumiaPersonality variable (the {{lumiaPersonality}} macro)
+      if (globalVars.lumiaPersonality) personalityParts.push(globalVars.lumiaPersonality)
+      if (localVars.lumiaPersonality) personalityParts.push(localVars.lumiaPersonality)
+
+      if (personalityParts.length > 0) {
+        lumiaPersonality = personalityParts.join('\n\n')
+        spindle.log.info(`[NovelistMemory] Rebuild: loaded Lumia personality from ${personalityParts.length} variable(s)`)
+      }
+    } catch (err) {
+      spindle.log.warn(`[NovelistMemory] Rebuild: could not read personality variables: ${err}`)
+    }
+  }
 
   // Fetch character context once (doesn't change per exchange)
   let characterContext: { name: string, description: string, personality: string, scenario: string, persona?: string } | undefined
@@ -309,7 +339,7 @@ export async function rebuildWhiteboard(
     // Use assistant index for sourceMessageRange
     const messageRange: [number, number] = [exchange.assistant.index, exchange.assistant.index]
 
-    const updatePrompt = buildUpdatePrompt(
+    const updatePrompt = buildRebuildPrompt(
       whiteboard,
       exchange.user.content,
       exchange.assistant.content,
@@ -317,6 +347,7 @@ export async function rebuildWhiteboard(
       messageRange,
       calibrationBank,
       characterContext,
+      lumiaPersonality,
     )
 
     try {
