@@ -116,7 +116,7 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
         // merge into the existing entry instead of creating a duplicate.
         const existingById = updated.threads.find(t => t.id === thread.id)
         const existingByName = !existingById ? updated.threads.find(t =>
-          t.name.toLowerCase().trim() === thread.name.toLowerCase().trim()
+          t.name?.toLowerCase().trim() === thread.name?.toLowerCase().trim()
         ) : undefined
         const existing = existingById || existingByName
         if (existing) {
@@ -140,19 +140,24 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
       // Also normalize string→array: models sometimes return a bare string
       // instead of a single-element array for these fields.
       for (const heart of delta.hearts.add) {
+        heart.from ??= ''
+        heart.to ??= ''
+        heart.status ??= ''
         heart.keyKnowledge = Array.isArray(heart.keyKnowledge) ? heart.keyKnowledge : heart.keyKnowledge ? [heart.keyKnowledge as unknown as string] : []
         heart.processing ??= ''
         heart.sensoryMemories = Array.isArray(heart.sensoryMemories) ? heart.sensoryMemories : heart.sensoryMemories ? [heart.sensoryMemories as unknown as string] : []
         heart.unresolved = Array.isArray(heart.unresolved) ? heart.unresolved : heart.unresolved ? [heart.unresolved as unknown as string] : []
         heart.nextBeat ??= ''
       }
-      for (const heart of delta.hearts.add) {
+      // Filter out hearts with no from/to — invalid entries the model hallucinated
+      const validHearts = delta.hearts.add.filter(h => h.from && h.to)
+      for (const heart of validHearts) {
         // Dedup: if a heart with the same id OR same from→to pair already exists,
         // merge into the existing entry instead of creating a duplicate.
         const existingById = updated.hearts.find(h => h.id === heart.id)
         const existingByPair = !existingById ? updated.hearts.find(h =>
-          h.from.toLowerCase().trim() === heart.from.toLowerCase().trim()
-          && h.to.toLowerCase().trim() === heart.to.toLowerCase().trim()
+          h.from?.toLowerCase().trim() === heart.from.toLowerCase().trim()
+          && h.to?.toLowerCase().trim() === heart.to.toLowerCase().trim()
         ) : undefined
         const existing = existingById || existingByPair
         if (existing) {
