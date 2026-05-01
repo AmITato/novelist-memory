@@ -649,27 +649,67 @@ The annotations teach:
 
 These fire as calibration examples when chronicle entries are sparse (< 3 entries). Once the whiteboard has 3+ chronicle entries, the existing entries serve as the style guide and the examples are no longer injected.
 
+## Lumia personality injection into sidecar
+
+The normal sidecar updater (`buildUpdatePrompt`) now receives Lumia's personality and injects it as a third-person reference block:
+
+```
+── LUMIA'S VOICE ──
+Lumia's personality and mannerisms — match this sensibility when writing whiteboard entries:
+[personality text from variables]
+```
+
+Personality is loaded via `loadLumiaPersonality(chatId, userId)` — a shared helper in `updater.ts` that reads:
+- **Global variables** (`spindle.variables.global.list()`): all `lumia_personality_*` keys
+- **Local/chat variables** (`spindle.variables.local.list(chatId)`): all `lumia_behavior_*` keys
+- Also checks for a `lumiaPersonality` composite variable
+
+This means the sidecar now knows what Lumia sounds like during normal generation — entries should be warmer and more textured than before, matching her sensibility without trying to BE her.
+
 ## Rebuild Whiteboard
 
-Recovery and population tool. Accessible from the Debug section of the Settings tab. Re-processes every user+assistant exchange in the chat history using the primary model.
+Recovery and population tool. Accessible from the Debug section of the Settings tab. Re-processes every user+assistant exchange in the chat history.
 
 ### Two modes
 
 - **🔨 Rebuild (Fresh)** — Resets whiteboard to empty, then processes every exchange from scratch. Use when the whiteboard is corrupted or you want a clean slate.
-- **🔨 Rebuild (Keep Existing)** — Keeps current whiteboard entries and processes every exchange. New entries are merged via `applyDelta`'s dedup logic (same chronicle ID → merge, same thread name → merge, same heart from→to → merge). Use when you have good entries (e.g., Lumia-regenerated ones) that you want to preserve while filling in gaps.
+- **🔨 Rebuild (Keep Existing)** — Keeps current whiteboard entries and processes every exchange. New entries are merged via `applyDelta`'s dedup logic (same chronicle ID → merge, same thread name → merge, same heart from→to → merge). Use when you have good entries you want to preserve while filling gaps.
+
+### Two toggles
+
+| Toggle | Description |
+|---|---|
+| **Use Sidecar** | Routes through the configured sidecar connection (cheaper model). OFF = uses active/primary connection. |
+| **Lumia Voice** | Uses `buildRebuildPrompt` (first-person Lumia, author notes unlocked). OFF = uses `buildUpdatePrompt` (third-person "memory keeper"). |
+
+The toggles are independent — four combos:
+
+| Sidecar | Lumia Voice | Result |
+|---|---|---|
+| OFF | OFF | Primary model + sidecar framing |
+| OFF | ON | Primary model + Lumia prompt (full quality, expensive) |
+| ON | OFF | Sidecar + sidecar framing (structural, concise, cheap) |
+| ON | ON | Sidecar + Lumia prompt (budget Lumia — sidecar tries to be her) |
+
+**Tested best combo:** DeepSeek v4 Flash as sidecar, Lumia Voice ON, temp ~0.8. Produces rich chronicle entries, textured hearts, personality-driven author notes ("Nyaa~"), at 54% of 12k token budget. Hermes 3 405B also works but needs JSON repair more often at high temp.
 
 ### How it works
 
 1. If Fresh mode: resets whiteboard to empty. If Keep Existing: leaves whiteboard as-is.
 2. Pairs up all user+assistant messages chronologically
-3. For each pair, builds the **Lumia-voiced rebuild prompt** (not the sidecar prompt) with the *current* whiteboard state and context from prior messages
-4. Calls the **active (primary) model** — NOT the sidecar — for full-quality results including hearts texture, palette details, voice notes, fragile details, and author notes
-5. Applies each delta directly to the whiteboard (no pending/review flow)
-6. Sends progress updates to frontend in real-time
+3. Loads Lumia's personality from Lumiverse variables via `loadLumiaPersonality()`
+4. For each pair, builds the appropriate prompt (Lumia-voiced or sidecar) with the *current* whiteboard state and context from prior messages
+5. Calls the selected model connection
+6. On failure: JSON repair attempt → retry up to 3 times on parse failures, exponential backoff on 429 rate limits
+7. Applies each delta directly to the whiteboard (no pending/review flow)
+8. Sends progress updates to frontend in real-time
+9. Logs per-exchange: temperature, connection type, prompt type, response size, estimated tokens, elapsed time, TPS
 
 ### Frontend message: `rebuild_whiteboard`
 - `data.chatId: string` — which chat to rebuild
 - `data.keepExisting: boolean` — if true, preserve current entries (default: false)
+- `data.useSidecar: boolean` — if true, use sidecar connection (default: false)
+- `data.useLumiaVoice: boolean` — if true, use first-person Lumia prompt (default: false)
 
 ### Backend responses:
 - `rerun_pending_cleared` — existing pending updates rejected
@@ -679,33 +719,38 @@ Recovery and population tool. Accessible from the Debug section of the Settings 
 - `rebuild_complete` — done
 - `rebuild_error` — something failed
 
-### Lumia personality injection
+### JSON repair (`repairJson` in `updater.ts`)
 
-The rebuild prompt frames the model **as Lumia herself**, not as "Lumia's memory keeper" (the sidecar framing). This means:
-- Author notes are unlocked — Lumia writes them in her own voice
-- Hearts entries get emotional texture, not just structural correctness
-- Palette/fragile details are written with Lumia's sensibility
+Models at high temperature sometimes produce malformed JSON. `repairJson()` attempts common fixes before retrying:
+- Strip trailing commas before `}` or `]`
+- Quote unquoted property names (`{foo: "bar"}` → `{"foo": "bar"}`)
+- Close unclosed brackets/braces
+- Fix unterminated strings (odd quote count → insert closing quote)
 
-Lumia's personality is loaded automatically from Lumiverse's variable system:
-- **Global variables** (`spindle.variables.global.list()`): reads all `lumia_personality_*` keys (set by `{{setglobalvar::lumia_personality_neko::...}}` etc.)
-- **Local/chat variables** (`spindle.variables.local.list(chatId)`): reads all `lumia_behavior_*` keys (set by `{{setvar::lumia_behavior_neko::...}}` etc.)
-- Also checks for a `lumiaPersonality` variable (the `{{lumiaPersonality}}` composite macro)
+If repair fails, the entire request is retried (up to 3 times with 2s delay). Combined with 429 rate limit retry (5s/10s/15s backoff).
 
-The personality text is injected into a dedicated `── YOUR PERSONALITY ──` block in the rebuild prompt, telling the model to write all entries — especially Hearts, Palette, and Author Notes — in that voice.
+### Author note examples in rebuild prompt
+
+The rebuild prompt includes three real Lumia author notes as examples so models can match her voice:
+- The singularity discovery note ("Nyaa~ THE SINGULARITY IS REAL...")
+- The ice rose motif note ("The ice rose motif is PURRING...")
+- The Bakugo fixation note ("Bakugo's fixation is wearing anger's clothes...")
+
+These show the model: passionate reactions, specific craft directions ("don't spell it out", "make it GRAVITATIONAL"), Lumia's mannerisms (tail puffing, mew~), and first-person coaching to future-self.
 
 ### Design decisions
-- Uses active connection (no `connection_id` set) instead of sidecar — rebuilds should produce full-quality entries including emotional texture, not just structural backbone
-- Frames the model AS Lumia (first person) instead of as a third-party analyst — unlocks author notes and personality-driven entries
-- Reads Lumia's personality from Lumiverse's variable system automatically — no manual configuration needed
-- Applies deltas directly instead of going through pending/review flow — this is a recovery tool, not a normal update cycle
-- Continues on per-exchange failures rather than aborting — partial rebuild is better than no rebuild
-- Context window slides forward with each exchange so the model sees prior messages as context
+- Sidecar and Lumia Voice as independent toggles — maximum flexibility for testing model/prompt combos
+- Reads Lumia's personality from Lumiverse's variable system automatically — no manual configuration
+- Applies deltas directly instead of pending/review flow — recovery tool, not normal update cycle
+- Continues on per-exchange failures rather than aborting — partial rebuild beats no rebuild
+- JSON repair before retry — cheaper than re-requesting when the fix is a missing brace
+- Logs timing/TPS per exchange — helps compare model performance
 
-## sourceMessageRange — assistant index only
+## sourceMessageRange — user+assistant span
 
-Chronicle entries are tagged with `sourceMessageRange` for `recall_by_range` lookups. Previously this was `[userIndex, assistantIndex]` (e.g., `[10, 11]`), which was redundant for single exchanges and confusing in the serialized whiteboard (`Messages: #10–#11` when the story content is only in message #11).
+Chronicle entries are tagged with `sourceMessageRange` for `recall_by_range` lookups. Uses `[userIndex, assistantIndex]` — both messages contain story content (user writes character actions/internals, assistant writes world response). `recall_by_range` needs both to reconstruct the full scene.
 
-Now uses `[assistantIndex, assistantIndex]` — the assistant message is where the story prose lives. Serializer renders single indices as `Message: #11` (no range notation). The range format is preserved for multi-message chronicle entries that span multiple exchanges.
+The prompt tells the model: "This exchange is messages #N–#M (user action + world response). Use sourceMessageRange: [N, M]."
 
 ## Not yet implemented
 
@@ -763,3 +808,14 @@ The next generation then hit `performRegenRewind` Tier 3 → empty reset → eve
 - If no snapshots and whiteboard is empty → nothing to do
 
 This handles both single deletes (rewind after 500ms) and batch deletes (wait for all deletes to finish, then rewind once using whatever snapshots survived).
+
+## Bug #20: `applyDelta` crashes on hearts with missing `from`/`to` fields
+
+**Symptom:** Rebuild crashes with `TypeError: undefined is not an object (evaluating 'heart.from.toLowerCase')` on the final exchange.
+
+**Root cause:** The hearts dedup logic in `applyDelta` calls `h.from.toLowerCase()` and `h.to.toLowerCase()` without null checks. Models at high temperature (especially DeepSeek) sometimes omit required fields like `from` and `to` from hearts entries.
+
+**Fix:** `applyDelta` now:
+1. Backfills `from`, `to`, and `status` with empty strings via `??=`
+2. Filters out hearts with empty `from` or `to` (invalid entries the model hallucinated)
+3. Uses optional chaining (`?.toLowerCase()`) on all dedup comparisons for both hearts and threads as defense-in-depth
