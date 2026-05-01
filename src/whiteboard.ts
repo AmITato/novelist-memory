@@ -311,11 +311,7 @@ export function serializeWhiteboard(wb: Whiteboard): string {
     sections.push('── CHRONICLE ──')
     for (const entry of wb.chronicle) {
       const chars = entry.charactersPresent.length > 0 ? ` | Characters: ${entry.charactersPresent.join(', ')}` : ''
-      const msgs = entry.sourceMessageRange
-        ? entry.sourceMessageRange[0] === entry.sourceMessageRange[1]
-          ? ` | Message: #${entry.sourceMessageRange[0]}`
-          : ` | Messages: #${entry.sourceMessageRange[0]}–#${entry.sourceMessageRange[1]}`
-        : ''
+      const msgs = entry.sourceMessageRange ? ` | Messages: #${entry.sourceMessageRange[0]}–#${entry.sourceMessageRange[1]}` : ''
       sections.push(`[${entry.timestamp}, ${entry.location}]${chars}${msgs}`)
       sections.push(entry.summary)
       if (entry.emotionalStates && Object.keys(entry.emotionalStates).length > 0) {

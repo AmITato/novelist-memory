@@ -96,15 +96,16 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
     .map((m: { role: string, content: string }) => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
     .join('\n\n')
 
-  // Determine message index for the latest exchange so Chronicle entries
+  // Determine message indices for the latest exchange so Chronicle entries
   // can be tagged with sourceMessageRange for direct retrieval.
-  // We use the assistant message index since that's where the story prose lives.
-  // The sidecar is told "this is message #N" and tags entries accordingly.
-  // For recall_by_range, start===end means a single message lookup.
+  // Both user and assistant messages contain story content — the user writes
+  // character actions/internals, the assistant writes the world's response.
+  // recall_by_range needs both to reconstruct the full scene.
+  const userIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastUser as { id: string }).id)
   const assistantIndex = allMessages.findIndex((m: { id: string }) => m.id === (lastAssistant as { id: string }).id)
   const messageRange: [number, number] | undefined =
-    assistantIndex >= 0
-      ? [assistantIndex, assistantIndex]
+    userIndex >= 0 && assistantIndex >= 0
+      ? [Math.min(userIndex, assistantIndex), Math.max(userIndex, assistantIndex)]
       : undefined
 
   const calibrationBank = await getCalibrationBank(chatId)
@@ -354,8 +355,8 @@ export async function rebuildWhiteboard(
       .map((m: { role: string, content: string }) => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
       .join('\n\n')
 
-    // Use assistant index for sourceMessageRange
-    const messageRange: [number, number] = [exchange.assistant.index, exchange.assistant.index]
+    // Both user and assistant messages contain story content
+    const messageRange: [number, number] = [exchange.user.index, exchange.assistant.index]
 
     // Prompt selection:
     // - useLumiaVoice ON → always use buildRebuildPrompt (first-person Lumia, author notes unlocked)

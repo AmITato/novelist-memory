@@ -171,13 +171,11 @@ export function buildUpdatePrompt(
   const adaptation = isAdaptationMode(currentWhiteboard)
 
   const rangeNote = messageRange
-    ? messageRange[0] === messageRange[1]
-      ? `\nMESSAGE INDEX: This exchange is message #${messageRange[0]}. Use sourceMessageRange: [${messageRange[0]}, ${messageRange[0]}] in Chronicle entries.`
-      : `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
+    ? `\nMESSAGE RANGE: This exchange is messages #${messageRange[0]}–#${messageRange[1]} (user action + world response). Use sourceMessageRange: [${messageRange[0]}, ${messageRange[1]}] in Chronicle entries.`
     : ''
 
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
-Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-Lumia will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
+Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-Lumia will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange — this spans BOTH the user message (character actions) and the assistant message (world response).
 
 SCENE CONTINUITY — This is critical:
 Look at the EXISTING chronicle entries. If the latest entry covers the same scene (same location, same time block, same characters, no major beat change), UPDATE that entry instead of creating a new one. Use "chronicle.update" with the existing entry's ID to:
@@ -379,14 +377,12 @@ export function buildRebuildPrompt(
   const adaptation = isAdaptationMode(currentWhiteboard)
 
   const rangeNote = messageRange
-    ? messageRange[0] === messageRange[1]
-      ? `\nMESSAGE INDEX: This exchange is message #${messageRange[0]}. Use sourceMessageRange: [${messageRange[0]}, ${messageRange[0]}] in Chronicle entries.`
-      : `\nMESSAGE INDICES: This exchange spans messages #${messageRange[0]}–#${messageRange[1]}. Use these indices for sourceMessageRange in Chronicle entries.`
+    ? `\nMESSAGE RANGE: This exchange is messages #${messageRange[0]}–#${messageRange[1]} (user action + world response). Use sourceMessageRange: [${messageRange[0]}, ${messageRange[1]}] in Chronicle entries.`
     : ''
 
   // Reuse the same section guidance as the sidecar prompt, but unlock author notes
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.
-Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-you will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what you scan to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange.
+Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-you will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what you scan to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange — this spans BOTH the user message (character actions) and the assistant message (world response).
 
 SCENE CONTINUITY: Look at existing chronicle entries. If the latest entry covers the same scene (same location, same time, same characters), UPDATE it instead of creating a new one — expand the summary, add dialogue, widen the sourceMessageRange. Only create a NEW entry when the scene actually changes.
 
