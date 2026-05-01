@@ -1135,25 +1135,39 @@ export function setup(ctx: SpindleFrontendContext) {
       rebuildDesc.textContent = 'Rebuild the whiteboard by re-processing every message pair. "Fresh" resets to empty first. "Keep Existing" preserves current entries and fills gaps.'
       debugSection.appendChild(rebuildDesc)
 
-      // Use Sidecar toggle
+      // Rebuild toggles
       let rebuildUseSidecar = false
+      let rebuildUseLumiaVoice = false
+
       const sidecarToggleRow = document.createElement('div')
-      sidecarToggleRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;'
+      sidecarToggleRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 6px;'
       const sidecarToggle = document.createElement('div')
       sidecarToggle.className = 'novelist-switch'
       sidecarToggle.onclick = () => {
         rebuildUseSidecar = !rebuildUseSidecar
         sidecarToggle.classList.toggle('active', rebuildUseSidecar)
-        sidecarLabel.textContent = rebuildUseSidecar
-          ? 'Use Sidecar (cheaper, shorter entries)'
-          : 'Use Primary Model (Lumia quality, higher token cost)'
       }
       sidecarToggleRow.appendChild(sidecarToggle)
       const sidecarLabel = document.createElement('span')
       sidecarLabel.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888);'
-      sidecarLabel.textContent = 'Use Primary Model (Lumia quality, higher token cost)'
+      sidecarLabel.textContent = 'Use Sidecar (cheaper model, shorter entries)'
       sidecarToggleRow.appendChild(sidecarLabel)
       debugSection.appendChild(sidecarToggleRow)
+
+      const lumiaVoiceRow = document.createElement('div')
+      lumiaVoiceRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;'
+      const lumiaVoiceToggle = document.createElement('div')
+      lumiaVoiceToggle.className = 'novelist-switch'
+      lumiaVoiceToggle.onclick = () => {
+        rebuildUseLumiaVoice = !rebuildUseLumiaVoice
+        lumiaVoiceToggle.classList.toggle('active', rebuildUseLumiaVoice)
+      }
+      lumiaVoiceRow.appendChild(lumiaVoiceToggle)
+      const lumiaVoiceLabel = document.createElement('span')
+      lumiaVoiceLabel.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted, #888);'
+      lumiaVoiceLabel.textContent = 'Lumia Voice (first-person prompt, unlocks author notes)'
+      lumiaVoiceRow.appendChild(lumiaVoiceLabel)
+      debugSection.appendChild(lumiaVoiceRow)
 
       const rebuildBtnRow = document.createElement('div')
       rebuildBtnRow.style.cssText = 'display: flex; gap: 8px;'
@@ -1170,7 +1184,7 @@ export function setup(ctx: SpindleFrontendContext) {
         rebuildKeepBtn.disabled = true
         rerunResetBtn.disabled = true
         rerunKeepBtn.disabled = true
-        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: false, useSidecar: rebuildUseSidecar } })
+        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: false, useSidecar: rebuildUseSidecar, useLumiaVoice: rebuildUseLumiaVoice } })
       }
       rebuildBtnRow.appendChild(rebuildFreshBtn)
 
@@ -1186,7 +1200,7 @@ export function setup(ctx: SpindleFrontendContext) {
         rebuildFreshBtn.disabled = true
         rerunResetBtn.disabled = true
         rerunKeepBtn.disabled = true
-        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: true, useSidecar: rebuildUseSidecar } })
+        ctx.sendToBackend({ type: 'rebuild_whiteboard', data: { chatId: currentChatId, keepExisting: true, useSidecar: rebuildUseSidecar, useLumiaVoice: rebuildUseLumiaVoice } })
       }
       rebuildBtnRow.appendChild(rebuildKeepBtn)
 

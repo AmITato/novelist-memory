@@ -993,9 +993,10 @@ spindle.onFrontendMessage(async (raw, userId) => {
       const chatId = payload.data?.chatId as string
       const keepExisting = (payload.data?.keepExisting as boolean) ?? false
       const useSidecar = (payload.data?.useSidecar as boolean) ?? false
+      const useLumiaVoice = (payload.data?.useLumiaVoice as boolean) ?? false
       if (!chatId) return
 
-      spindle.log.info(`[NovelistMemory] Rebuild whiteboard requested for chat ${chatId} (keepExisting: ${keepExisting}, useSidecar: ${useSidecar})`)
+      spindle.log.info(`[NovelistMemory] Rebuild whiteboard requested for chat ${chatId} (keepExisting: ${keepExisting}, useSidecar: ${useSidecar}, lumiaVoice: ${useLumiaVoice})`)
 
       // Auto-reject any pending updates
       const rebuildPending = await getPendingUpdates(chatId)
@@ -1014,7 +1015,7 @@ spindle.onFrontendMessage(async (raw, userId) => {
             type: 'rebuild_progress',
             data: { chatId, step, total, section },
           }, userId)
-        }, undefined, keepExisting, useSidecar)
+        }, undefined, keepExisting, useSidecar, useLumiaVoice)
 
         const rebuilt = await getWhiteboard(chatId)
         spindle.sendToFrontend({ type: 'whiteboard_data', data: { chatId, whiteboard: rebuilt } }, userId)

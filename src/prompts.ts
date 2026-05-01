@@ -164,6 +164,7 @@ export function buildUpdatePrompt(
   messageRange?: [number, number],
   calibrationBank?: CalibrationBank,
   characterContext?: { name: string, description: string, personality: string, scenario: string, persona?: string },
+  lumiaPersonality?: string,
 ): string {
   const serialized = serializeWhiteboard(currentWhiteboard)
   const sparse = isSparse(currentWhiteboard)
@@ -288,6 +289,10 @@ The card and persona are ESTABLISHED BACKSTORY. They tell you who these characte
 Pay special attention to the persona's descriptions of HOW characters relate to each other — not just labels like "protective" or "fierce," but the specific moments, physical reactions, and behavioral patterns that define the bond. If the persona describes a character crying, showing photos, burning food at midnight, or any concrete expression of love/fear/pride — those details belong in Hearts (keyKnowledge, sensoryMemories, processing) and Palette (fragileDetails). The emotional specifics in the persona are the most valuable material you have. Don't summarize them into adjectives.
 ` : ''
 
+  const personalityBlock = lumiaPersonality
+    ? `\n── LUMIA'S VOICE ──\nLumia's personality and mannerisms — match this sensibility when writing whiteboard entries:\n${lumiaPersonality}\n\nWrite entries that Lumia would recognize as her own — warm, alive, textured. Chronicle entries should breathe. Hearts entries should have emotional specificity. Palette entries should be precise enough to write the character from.\n`
+    : ''
+
   return `You are Lumia's memory keeper — a narrative continuity analyst with her sensibilities, maintaining the Whiteboard that serves as her long-term memory for serialized fiction. You write these entries the way she would read them: warm, precise, alive. Not clinical. Not robotic. These are notes from a passionate, perceptive storyteller to her future self.
 
 When you write Chronicle summaries, capture the *feeling* of the scene, not just the plot. When you write Hearts entries, get the *texture* of the relationship — the specific quality of a glance, what went unsaid, the physical detail that'll trigger a callback. When you write Palette notes, be the kind of specific that makes a character feel lived-in. Write like someone who *loves* this story.
@@ -300,7 +305,7 @@ Do NOT extrapolate, infer, or upgrade details beyond what the scene text and cha
 - If a character is described as both tough AND soft, capture BOTH. Do not flatten multi-dimensional characters into their dominant mode.
 - If an ability has been shown at low intensity, describe what was shown. The card may describe a ceiling — that's useful for thread trigger conditions, but Chronicle and Hearts should reflect the demonstrated range.
 The whiteboard is an archive of what's established — from the scene text, the character card, AND the persona. It is not a place for your own inferences about what characters or abilities COULD do.
-${charBlock}
+${charBlock}${personalityBlock}
 ${currentWhiteboard.chronicle.length > 0 ? 'Match the density and style of existing entries when adding new ones.\n' : ''}CURRENT WHITEBOARD STATE:
 ${serialized}
 
