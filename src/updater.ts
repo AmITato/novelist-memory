@@ -4,6 +4,7 @@ import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpd
 import { archiveMessages, getArchive } from './archive'
 import { getConfig, resolveBackgroundConnectionId } from './config'
 import { buildUpdatePrompt, buildRebuildPrompt, buildArchiveMetadataPrompt } from './prompts'
+import { whiteboardDeltaSchema, archiveMetadataSchema, jsonSchemaResponseFormat } from './schemas'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
@@ -225,7 +226,7 @@ async function updateWhiteboard(chatId: string, messageId?: string, userId?: str
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
-      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: { type: 'json_object' } },
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: jsonSchemaResponseFormat(whiteboardDeltaSchema) },
     }
     if (connectionId) genRequest.connection_id = connectionId
     if (userId) genRequest.userId = userId
@@ -439,7 +440,7 @@ export async function rebuildWhiteboard(
         { role: 'system', content: updatePrompt },
         { role: 'user', content: 'Analyze the latest exchange and produce the whiteboard delta.' },
       ],
-      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: { type: 'json_object' } },
+      parameters: { temperature: config.updaterTemperature ?? 0.3, max_tokens: 4000, response_format: jsonSchemaResponseFormat(whiteboardDeltaSchema) },
     }
     if (userId) genRequest.userId = userId
     if (useSidecar) {
@@ -565,7 +566,7 @@ async function checkAndArchiveMessages(chatId: string, userId?: string): Promise
           { role: 'system', content: metadataPrompt },
           { role: 'user', content: 'Extract metadata.' },
         ],
-        parameters: { temperature: 0.1, max_tokens: 500, response_format: { type: 'json_object' } },
+        parameters: { temperature: 0.1, max_tokens: 500, response_format: jsonSchemaResponseFormat(archiveMetadataSchema) },
       }
       if (metaConnId) metaGenRequest.connection_id = metaConnId
       if (userId) metaGenRequest.userId = userId

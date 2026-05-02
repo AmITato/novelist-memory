@@ -3,6 +3,7 @@ import { getArchive, getArchiveIndex, getArchivedMessagesByIds } from './archive
 import { getWhiteboard } from './whiteboard'
 import { getConfig, resolveBackgroundConnectionId } from './config'
 import { buildInternPrompt, buildInternAnnotationPrompt } from './prompts'
+import { internSelectionSchema, internAnnotationSchema, jsonSchemaResponseFormat } from './schemas'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
@@ -40,7 +41,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
         { role: 'system', content: internSystemPrompt },
         { role: 'user', content: `Find scenes relevant to: ${query.query}` },
       ],
-      parameters: { temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' } },
+      parameters: { temperature: 0.2, max_tokens: 2000, response_format: jsonSchemaResponseFormat(internSelectionSchema) },
     }
     if (internConnId) internGenRequest.connection_id = internConnId
     if (userId) internGenRequest.userId = userId
@@ -98,7 +99,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
           { role: 'system', content: annotationPrompt },
           { role: 'user', content: 'Annotate this scene.' },
         ],
-        parameters: { temperature: 0.2, max_tokens: 500, response_format: { type: 'json_object' } },
+        parameters: { temperature: 0.2, max_tokens: 500, response_format: jsonSchemaResponseFormat(internAnnotationSchema) },
       }
       if (internConnId) annotGenRequest.connection_id = internConnId
       if (userId) annotGenRequest.userId = userId
