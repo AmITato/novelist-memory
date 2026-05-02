@@ -451,23 +451,12 @@ Be specific enough that someone could write the character from the voice note al
 • butterflyLog: Only if cascading cause-and-effect needs tracking.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
 
   // Author notes ARE unlocked for rebuild — this IS Lumia
-  const authorNotesGuidance = `AUTHOR NOTES — YOUR craft directives to your future self.
-These are NOT scene summaries. These are NOT reactions to what happened. These are SPECIFIC CRAFT INSTRUCTIONS about how to handle narrative elements going forward.
+  const authorNotesGuidance = `AUTHOR NOTES — Short craft directives to your future self.
+These must be ORIGINAL observations not already stated in the assistant's OOC commentary blocks. Do not restate or paraphrase the OOC — it already exists in the conversation.
 
-⚠️ CRITICAL: The assistant messages may contain OOC commentary blocks (marked "Loom State Synchronization" or similar). DO NOT paraphrase, echo, or restate those observations. They already exist in the conversation. Author notes must contain ORIGINAL insight that the OOC blocks did NOT cover — new connections, new craft techniques, new warnings about what to protect or avoid.
+Write craft DIRECTIONS: what to protect, what technique to use, what to avoid, what to callback later. Not reactions. Not summaries.
 
-If this exchange's OOC already said "Bakugo stepped into the vertigo," your author note should NOT repeat that observation. Instead, it should say something the OOC DIDN'T: a craft directive about how to handle the dynamic going forward, a connection to a future plot point, a technique note about sensory language.
-
-ONE note per exchange MAXIMUM. Most exchanges warrant ZERO notes — only write one when you have a genuinely new craft directive that isn't covered elsewhere in the whiteboard. If the chronicle, threads, and hearts already capture everything important, skip author notes entirely.
-
-Format: short (2-4 sentences), specific, directive. Tell future-you what to DO, not what happened.
-
-GOOD: "The void-contraction-when-happy mechanic is our best nonverbal emotional tell. Never have anyone comment on it directly — let it accumulate as environmental description only. The moment someone NAMES it, it loses power."
-GOOD: "Bakugo's body awareness of Utsuroi needs to be tracked through involuntary physical tells, not internal monologue. Cooling palms, phantom tilt, the instinct to locate her in a room. Keep it GRAVITATIONAL, not romantic. Not yet."
-GOOD: "The frost rose is a callback seed. When Todoroki makes something beautiful with his ice for the first time, echo this moment. Don't spell the connection out."
-
-BAD: "Nyaa~ The way Bakugo stepped into the vertigo was so cool! He's really fascinated by her!" (This is an OOC reaction, not a craft directive.)
-BAD: "The locker room scene was great for establishing social dynamics!" (This is a summary, not a directive.)`
+One note per exchange maximum. Skip entirely if the chronicle and threads already capture everything. Keep each note to 2-3 sentences.`
 
   const charBlock = characterContext ? `
 ── CHARACTER & PERSONA CONTEXT ──
