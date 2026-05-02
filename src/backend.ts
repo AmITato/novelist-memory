@@ -157,19 +157,41 @@ spindle.registerInterceptor(async (messages, context) => {
     // Still inject — but warn. Future: auto-compact.
   }
 
+  // ── Sliding window: clip chat history to the last N exchanges ──────────
+  // The whiteboard replaces older messages, so we only need the most recent
+  // exchanges in context. This mirrors Lumiverse's own message limit logic
+  // but is tied to the extension's slidingWindowSize config.
+  const windowSize = config.slidingWindowSize * 2
+  // Separate system/injected messages from chat history (user + assistant)
+  const chatIndices: number[] = []
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === 'user' || messages[i].role === 'assistant') {
+      chatIndices.push(i)
+    }
+  }
+
+  let result = [...messages]
+  if (chatIndices.length > windowSize) {
+    // Remove chat messages outside the sliding window (oldest first)
+    const indicesToRemove = chatIndices.slice(0, chatIndices.length - windowSize)
+    // Remove in reverse order so indices stay valid
+    for (let i = indicesToRemove.length - 1; i >= 0; i--) {
+      result.splice(indicesToRemove[i], 1)
+    }
+  }
+
   // Inject before the chat history — find the first user or assistant message
   // (which marks the start of the conversation) and place the whiteboard above it.
   // This keeps the whiteboard as background context rather than a final directive,
   // preserving the model's voice by letting chat history and CoT sit closer to generation.
-  const firstChatIndex = messages.findIndex(m => m.role === 'user' || m.role === 'assistant')
-  const insertIndex = firstChatIndex >= 0 ? firstChatIndex : messages.length
+  const firstChatIndex = result.findIndex(m => m.role === 'user' || m.role === 'assistant')
+  const insertIndex = firstChatIndex >= 0 ? firstChatIndex : result.length
 
   const injectedMessage = {
     role: 'system' as const,
     content: serialized,
   }
 
-  const result = [...messages]
   result.splice(insertIndex, 0, injectedMessage)
 
   return {
