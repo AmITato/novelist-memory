@@ -863,6 +863,7 @@ let deleteDebounceChat: string | null = null
 spindle.onFrontendMessage(async (raw, userId) => {
   if (userId) lastKnownUserId = userId
   const payload = raw as { type: string, data?: Record<string, unknown> }
+  spindle.log.info(`[NovelistMemory] onFrontendMessage: type="${payload.type}"`)
   switch (payload.type) {
     case 'get_whiteboard': {
       const chatId = payload.data?.chatId as string
@@ -934,9 +935,17 @@ spindle.onFrontendMessage(async (raw, userId) => {
     case 'manual_recall': {
       const chatId = payload.data?.chatId as string
       const query = payload.data?.query as string
+      spindle.log.info(`[NovelistMemory] manual_recall received — chatId: ${chatId}, query: "${query}", userId: ${userId}`)
       if (!chatId || !query) return
-      const results = await queryIntern(chatId, { query, maxResults: 3 }, userId)
-      spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results } }, userId)
+      try {
+        const results = await queryIntern(chatId, { query, maxResults: 3 }, userId)
+        spindle.log.info(`[NovelistMemory] manual_recall got ${results.length} results`)
+        spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results } }, userId)
+        spindle.log.info(`[NovelistMemory] manual_recall sent to frontend`)
+      } catch (err) {
+        spindle.log.error(`[NovelistMemory] manual_recall crashed: ${err}`)
+        spindle.sendToFrontend({ type: 'recall_results', data: { chatId, results: [{ source: 'Error', emotionalRegister: 'n/a', keyContent: `Recall failed: ${err}`, relevanceNote: '', fullScene: '', tokenCount: 0 }] } }, userId)
+      }
       break
     }
 
