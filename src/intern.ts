@@ -51,6 +51,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
       selectionContent = selectionContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
     }
     selectionResult = JSON.parse(selectionContent)
+    spindle.log.info(`[NovelistMemory] Intern selection response: intent="${selectionResult.intent}", selectedMessages=${selectionResult.selectedMessages.length}, notes="${selectionResult.searchNotes}"`)
   } catch (err) {
     spindle.log.error(`Intern selection failed: ${err}`)
     return [{
@@ -69,6 +70,7 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
     .sort((a, b) => a.priority - b.priority)
     .slice(0, maxResults)
 
+  spindle.log.info(`[NovelistMemory] Intern selected ${selected.length} messages after sort/slice (from ${selectionResult.selectedMessages.length} raw)`)
   const messageIds = selected.map(s => s.messageId)
   const fullMessages = await getArchivedMessagesByIds(chatId, messageIds)
   const messageMap = new Map(fullMessages.map(m => [m.messageId, m]))
