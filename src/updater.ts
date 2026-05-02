@@ -1,10 +1,10 @@
 import { countTokens } from './tokens'
-import type { WhiteboardDelta, PendingUpdate, ArchivedMessage } from './types'
-import { getWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates, getCalibrationBank } from './whiteboard'
+import type { WhiteboardDelta, PendingUpdate, ArchivedMessage, ChronicleEntry } from './types'
+import { getWhiteboard, saveWhiteboard, savePendingUpdate, commitPendingUpdate, autoCommitDueUpdates, getCalibrationBank } from './whiteboard'
 import { archiveMessages, getArchive } from './archive'
 import { getConfig, resolveBackgroundConnectionId } from './config'
-import { buildUpdatePrompt, buildRebuildPrompt, buildArchiveMetadataPrompt } from './prompts'
-import { whiteboardDeltaSchema, archiveMetadataSchema, jsonSchemaResponseFormat } from './schemas'
+import { buildUpdatePrompt, buildRebuildPrompt, buildArchiveMetadataPrompt, buildCompactionPrompt } from './prompts'
+import { whiteboardDeltaSchema, archiveMetadataSchema, chronicleCompactionSchema, jsonSchemaResponseFormat } from './schemas'
 
 declare const spindle: import('lumiverse-spindle-types').SpindleAPI
 
@@ -108,6 +108,11 @@ export async function processGenerationEnd(
 
     // Auto-commit any pending updates whose review window has elapsed
     await autoCommitDueUpdates(chatId)
+
+    // Fire-and-forget compaction check — don't block generation
+    compactChronicle(chatId, userId).catch(err =>
+      spindle.log.error(`[NovelistMemory] Compaction error: ${err}`)
+    )
   } catch (err) {
     spindle.log.error(`[NovelistMemory] Post-generation processing failed: ${err}`)
   }
@@ -602,4 +607,101 @@ async function checkAndArchiveMessages(chatId: string, userId?: string): Promise
   }
 
   await archiveMessages(chatId, archivedMessages)
+}
+
+// ─── Chronicle Compaction ───────────────────────────────────────────────────
+// When chronicle entries exceed compactionThreshold, compress older entries
+// to reduce whiteboard token usage. Each entry gets its own async LLM call
+// so the model only holds one entry in working memory at a time.
+
+export async function compactChronicle(chatId: string, userId?: string): Promise<void> {
+  const config = await getConfig()
+  const whiteboard = await getWhiteboard(chatId)
+
+  if (whiteboard.chronicle.length < config.compactionThreshold) return
+
+  // Protect the most recent entries — they're still narratively active
+  const protectedCount = config.slidingWindowSize
+  const compactableCount = whiteboard.chronicle.length - protectedCount
+  if (compactableCount <= 0) return
+
+  spindle.log.info(`[NovelistMemory] Compaction triggered: ${whiteboard.chronicle.length} chronicle entries (threshold: ${config.compactionThreshold}), compacting oldest ${compactableCount}`)
+
+  const connId = await resolveBackgroundConnectionId(config.updaterConnectionId, userId)
+  const entriesToCompact = whiteboard.chronicle.slice(0, compactableCount)
+
+  // Track which entries already look compacted (summary ≤ 2 sentences)
+  // so we don't re-compress entries that were already compacted in a previous run
+  const needsCompaction = (entry: ChronicleEntry): boolean => {
+    const sentences = entry.summary.split(/[.!?]+/).filter(s => s.trim().length > 0)
+    return sentences.length > 2
+  }
+
+  const candidates = entriesToCompact.filter(needsCompaction)
+  if (candidates.length === 0) {
+    spindle.log.info(`[NovelistMemory] All compactable entries already compressed, skipping`)
+    return
+  }
+
+  spindle.log.info(`[NovelistMemory] Compacting ${candidates.length} entries (${entriesToCompact.length - candidates.length} already compact)`)
+
+  // Fire all compaction calls concurrently — each is independent
+  const compactionResults = await Promise.allSettled(
+    candidates.map(async (entry): Promise<{ id: string, summary: string, emotionalStates: Record<string, string>, verbatimDialogue?: string[] } | null> => {
+      try {
+        const prompt = buildCompactionPrompt(entry)
+        const request: Record<string, unknown> = {
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: 'Compress this chronicle entry.' },
+          ],
+          parameters: { temperature: 0.1, max_tokens: 500, response_format: jsonSchemaResponseFormat(chronicleCompactionSchema) },
+        }
+        if (connId) request.connection_id = connId
+        if (userId) request.userId = userId
+
+        const response = await spindle.generate.quiet(request) as { content: string }
+        let content = response.content.trim()
+        if (content.startsWith('```')) {
+          content = content.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+        }
+        const parsed = JSON.parse(content) as {
+          summary: string
+          emotionalStates: Record<string, string>
+          keyDialogue: string[] | null
+        }
+        return {
+          id: entry.id,
+          summary: parsed.summary,
+          emotionalStates: parsed.emotionalStates,
+          verbatimDialogue: parsed.keyDialogue ?? undefined,
+        }
+      } catch (err) {
+        spindle.log.warn(`[NovelistMemory] Compaction failed for entry ${entry.id}: ${err}`)
+        return null
+      }
+    })
+  )
+
+  // Apply successful compactions to the whiteboard
+  let compactedCount = 0
+  for (const result of compactionResults) {
+    if (result.status !== 'fulfilled' || !result.value) continue
+    const { id, summary, emotionalStates, verbatimDialogue } = result.value
+    const entry = whiteboard.chronicle.find(e => e.id === id)
+    if (!entry) continue
+
+    entry.summary = summary
+    entry.emotionalStates = emotionalStates
+    if (verbatimDialogue) entry.verbatimDialogue = verbatimDialogue
+    else entry.verbatimDialogue = []
+    // Strip sensoryContext on compacted entries — it's in the summary now
+    entry.sensoryContext = ''
+    compactedCount++
+  }
+
+  if (compactedCount > 0) {
+    await saveWhiteboard(whiteboard)
+    spindle.log.info(`[NovelistMemory] Compacted ${compactedCount}/${candidates.length} chronicle entries`)
+  }
 }

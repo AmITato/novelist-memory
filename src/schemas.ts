@@ -316,6 +316,30 @@ export const archiveMetadataSchema = {
   },
 }
 
+// ─── Chronicle Compaction Schema ────────────────────────────────────────────
+// Used by: compaction pipeline — compresses old chronicle entries
+
+export const chronicleCompactionSchema = {
+  name: 'chronicle_compaction',
+  strict: true,
+  schema: {
+    type: 'object' as const,
+    additionalProperties: false,
+    required: ['summary', 'emotionalStates', 'keyDialogue'],
+    properties: {
+      summary: { type: 'string' as const },
+      emotionalStates: {
+        type: 'object' as const,
+        additionalProperties: { type: 'string' as const },
+      },
+      keyDialogue: {
+        type: ['array', 'null'] as const,
+        items: { type: 'string' as const },
+      },
+    },
+  },
+}
+
 // ─── Helper: Build response_format parameter ────────────────────────────────
 // Wraps a schema definition into the OpenAI-compatible response_format object
 // that OpenRouter forwards to providers supporting constrained decoding.

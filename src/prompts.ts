@@ -573,6 +573,48 @@ Respond with ONLY valid JSON:
 }`
 }
 
+// ─── Chronicle Compaction Prompt ────────────────────────────────────────────
+
+export function buildCompactionPrompt(entry: {
+  id: string
+  timestamp: string
+  location: string
+  summary: string
+  charactersPresent: string[]
+  emotionalStates: Record<string, string>
+  sensoryContext: string
+  verbatimDialogue?: string[]
+  sourceMessageRange?: [number, number]
+}): string {
+  return `You are compressing an older chronicle entry from a fiction project's narrative memory system. The goal is to reduce token usage while preserving everything a writer would need to maintain continuity.
+
+ORIGINAL ENTRY:
+- ID: ${entry.id}
+- Timestamp: ${entry.timestamp}
+- Location: ${entry.location}
+- Characters: ${entry.charactersPresent.join(', ')}
+- Summary: ${entry.summary}
+- Sensory context: ${entry.sensoryContext}
+- Emotional states: ${JSON.stringify(entry.emotionalStates)}
+${entry.verbatimDialogue?.length ? `- Key dialogue: ${entry.verbatimDialogue.join(' | ')}` : ''}
+${entry.sourceMessageRange ? `- Source messages: #${entry.sourceMessageRange[0]}–#${entry.sourceMessageRange[1]}` : ''}
+
+INSTRUCTIONS:
+Compress the summary to 1-2 dense sentences. Keep:
+- WHO was present and what they DID (not how the scene felt — that's in emotionalStates)
+- Any plot-critical actions, decisions, or revelations
+- Specific proper nouns, numbers, or lore details that would break continuity if lost
+
+Strip:
+- Atmospheric description (sensoryContext already captures this separately)
+- Transitional language ("meanwhile", "later that day")
+- Emotional narration (emotionalStates handles this)
+
+For emotionalStates: compress to the single most important emotional note per character (3-5 words max each).
+
+For keyDialogue: keep ONLY lines that would be quoted later as callbacks. If none are callback-worthy, return null.`
+}
+
 // ─── Intern Retrieval Prompt ────────────────────────────────────────────────
 
 export function buildInternPrompt(
