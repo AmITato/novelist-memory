@@ -184,8 +184,23 @@ spindle.registerInterceptor(async (messages, context) => {
   // (which marks the start of the conversation) and place the whiteboard above it.
   // This keeps the whiteboard as background context rather than a final directive,
   // preserving the model's voice by letting chat history and CoT sit closer to generation.
+  //
+  // If no chat messages exist yet (interceptor ran before assembly), insert after
+  // the last system message so the whiteboard sits between system prompts and
+  // whatever gets added after us.
   const firstChatIndex = result.findIndex(m => m.role === 'user' || m.role === 'assistant')
-  const insertIndex = firstChatIndex >= 0 ? firstChatIndex : result.length
+  spindle.log.info(`[NovelistMemory] Interceptor: ${result.length} messages in array, firstChatIndex=${firstChatIndex}, roles: ${result.map(m => m.role).join(',')}`)
+  let insertIndex: number
+  if (firstChatIndex >= 0) {
+    insertIndex = firstChatIndex
+  } else {
+    // Find the last system message and insert after it
+    let lastSystemIdx = -1
+    for (let i = result.length - 1; i >= 0; i--) {
+      if (result[i].role === 'system') { lastSystemIdx = i; break }
+    }
+    insertIndex = lastSystemIdx >= 0 ? lastSystemIdx + 1 : result.length
+  }
 
   const injectedMessage = {
     role: 'system' as const,
