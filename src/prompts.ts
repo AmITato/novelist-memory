@@ -205,25 +205,30 @@ DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures
 DO: Flag specific callback-worthy details explicitly in the summary. The tiny things — the way someone held a cup, where their eyes went, what they didn't say.
 DO: When in doubt, create a NEW entry. Missing content is worse than having one extra entry.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
-  const threadsGuidance = `THREADS — Narrative arcs and plot threads. THIS IS THE MOST CRITICAL SECTION.
-Every thread MUST have trigger conditions and downstream consequences, or it's just a fact — facts belong in Chronicle or Hearts, not Threads.
+  const threadsGuidance = `THREADS — Narrative arcs, plot threads, and foreshadowing seeds. Err on the side of MORE threads, not fewer.
+A healthy story should have 6-12 active threads at any time. If you only have 2-3, you are being too conservative. Every relationship friction, every secret, every tactical plan, every lore revelation, every recurring motif is a potential thread.
 
-Status definitions (STRICT — read carefully):
-• SEEDED — Single touchpoint. The thread has been mentioned, hinted, or planted ONCE. This is the DEFAULT for new threads. A thread that appears for the first time in this exchange is ALWAYS SEEDED, no matter how important it seems.
-• ACTIVE — TWO OR MORE separate touchpoints across DIFFERENT exchanges. The thread has been mentioned, advanced, or developed in at least two distinct scenes. A thread CANNOT be ACTIVE on its first appearance. Period.
+Every thread MUST have trigger conditions and downstream consequences.
+
+Types of things that deserve threads:
+• Secrets that could be revealed (the Erasure immunity, the Commission files, the singularity)
+• Tactical plans with consequences (Rumi's fake-compliance strategy)
+• Relationship dynamics with trajectory (Bakugo's fixation, Ashido's friendship campaign, Todoroki's resonance)
+• Lore elements that affect the plot (the nature of the quirk, its limits, its dangers)
+• Recurring social frictions (Iida's rule-enforcement, uniform rebellion)
+• Foreshadowing seeds that need tracking across distance
+
+Status definitions (STRICT):
+• SEEDED — Single touchpoint. First appearance = ALWAYS SEEDED, no exceptions.
+• ACTIVE — TWO OR MORE touchpoints across DIFFERENT exchanges.
 • DORMANT — Was active, gone quiet. Not resolved, just not in motion.
 • RESOLVED — Concluded. Consequences landed. Keep for reference.
 
-EXAMPLE OF THE SEEDED/ACTIVE DISTINCTION:
-- Message 1 introduces a character's dangerous quirk → thread status: SEEDED (one touchpoint)
-- Message 5, the quirk causes a problem in class → NOW it's ACTIVE (second touchpoint)
-- If you are processing the FIRST message of a chat, ALL new threads are SEEDED. No exceptions.
-
-DON'T: Create a thread for every plot point. Threads need CONSEQUENCES that need tracking.
-DON'T: Mark threads ACTIVE on first appearance. First appearance = SEEDED. Always. The importance of a thread does not determine its status — the NUMBER OF TOUCHPOINTS does.
-DON'T: Leave trigger conditions or downstream consequences empty. A thread without triggers is just a note.
-DO: Track subtle foreshadowing seeds. These are the threads most likely to be lost over distance.
-DO: Update dependencies — what other threads or character knowledge does this thread rely on?${sparse.threads ? formatCalibrationExamples('THREADS', calibrationBank?.threads, DEFAULT_THREAD) : ''}`
+DON'T: Mark threads ACTIVE on first appearance. First appearance = SEEDED. Always.
+DON'T: Leave trigger conditions or downstream consequences empty.
+DO: Track subtle foreshadowing seeds — these are the threads most likely to be lost over distance.
+DO: Create threads for character dynamics that have narrative momentum, not just facts.
+DO: Update dependencies — what other threads does this one rely on?${sparse.threads ? formatCalibrationExamples('THREADS', calibrationBank?.threads, DEFAULT_THREAD) : ''}`
 
   const heartsGuidance = `HEARTS — Relationship dynamics. This is where the story *lives*.
 Not just "A likes B" — the texture, the processing state, the sensory memories, what's unresolved, what the next beat should be. These entries should make you *feel* the relationship when you read them back.
