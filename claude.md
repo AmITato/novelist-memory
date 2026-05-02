@@ -755,9 +755,9 @@ The prompt tells the model: "This exchange is messages #N–#M (user action + wo
 
 ## Not yet implemented
 
-- **Compaction logic** — when Chronicle grows past `compactionThreshold`, compress older entries
+- ~~**Compaction logic**~~ — implemented: when Chronicle grows past `compactionThreshold`, fires individual async LLM calls to compress older entries. See "Chronicle compaction" section below.
 - **Full audit** — every N messages, cross-check whiteboard against archive for drift
-- ~~**Token counting**~~ — implemented via `src/tokens.ts`; uses `spindle.tokens.countText()` with char/4 fallback
+- ~~**Token counting**~~ — implemented via `src/tokens.ts`; uses `spindle.tokens.countText()` with char/3 fallback (was char/4, undercounted by ~24%)
 - ~~**Connection picker UI**~~ — implemented: Settings tab lists available connections via `spindle.connections.list()` as `<select>` dropdowns
 - **Calibration bank UI** — frontend interface for populating per-chat calibration examples (currently requires manual JSON editing)
 - ~~**`removeSnapshotsForMessage` cleanup**~~ — now called by the `MESSAGE_DELETED` handler for full cleanup on message deletion.
@@ -1010,3 +1010,114 @@ Additionally fixed `applyDelta` to widen `sourceMessageRange` and append `verbat
 **Root cause:** Constrained decoding models (Gemini Flash) compile the schema into a grammar, but the prompt still controls what the model *wants* to generate. Long passages with nested quotes and JSON-like fragments inside the system prompt confused the model's sense of nesting depth, causing it to fight the grammar and produce truncated output that hit `max_tokens`.
 
 **Fix:** Removed all nested-quote examples. Restored the original guidance with one added line about not parroting OOC. Kept prompt examples short and prosaic. The personality injection from `lumiaPersonality` variable handles voice.
+
+## Sliding window interceptor clipping
+
+The interceptor (`backend.ts`, priority 30) now clips chat history to the last `slidingWindowSize * 2` messages before injecting the whiteboard. Previously, the extension only used the sliding window for sidecar context and archive decisions — the primary model still saw the full chat history from Lumiverse's prompt assembly.
+
+### How it works
+
+1. Iterates over the assembled message array and identifies all `user`/`assistant` messages (chat history)
+2. If chat history exceeds `slidingWindowSize * 2` (default: 12), removes the oldest messages
+3. System messages, world info, and other injected content are preserved
+4. The whiteboard is then injected before the remaining chat history
+
+This mirrors Lumiverse's own Message Limit feature (`messages.slice(-N)` in `prompt-assembly.service.ts:1522-1537`) but is tied to the extension's config rather than the global summarization settings.
+
+### Why the extension handles this instead of Lumiverse's Message Limit
+
+Lumiverse's Message Limit is a global setting under Summarization. The extension's sliding window is per-extension config, and the clipping is semantically tied to the whiteboard — the whiteboard *replaces* the clipped messages, so they should be clipped *when* the whiteboard is injected, not independently.
+
+## Chronicle compaction
+
+When chronicle entries exceed `compactionThreshold` (default: 100), the extension compresses older entries to reduce whiteboard token usage. Implemented in `updater.ts:compactChronicle()`.
+
+### Trigger
+
+- Fires at the end of `processGenerationEnd`, after the updater and archiver run
+- Fire-and-forget (`.catch()`) — does not block generation
+- Checks `chronicle.length >= compactionThreshold` before doing any work
+
+### What gets compacted
+
+- All chronicle entries EXCEPT the most recent `slidingWindowSize` entries (protected — still narratively active)
+- Skips entries that are already compact (≤2 sentences in summary) to avoid re-compressing on every generation
+
+### How each entry is compressed
+
+- One `quiet()` call per entry, all fired in parallel via `Promise.allSettled`
+- Uses `buildCompactionPrompt()` in `prompts.ts` — sends the single entry's full content
+- Uses `chronicleCompactionSchema` in `schemas.ts` with `json_schema` strict mode
+- Temperature: 0.1 (precision over creativity)
+- Uses the sidecar connection (same as updater)
+
+### What the compaction preserves
+
+- `summary` — compressed to 1-2 dense sentences
+- `emotionalStates` — compressed to one note per character (3-5 words)
+- `verbatimDialogue` — only callback-worthy lines; null if none
+- `sourceMessageRange` — untouched (critical for `recall_by_range`)
+- `id`, `timestamp`, `location`, `charactersPresent` — untouched
+
+### What the compaction strips
+
+- `sensoryContext` — cleared (redundant after compression)
+- Atmospheric description, transitional language, emotional narration from summary
+
+### Schema: `chronicleCompactionSchema`
+
+```json
+{
+  "summary": "string",
+  "emotionalStates": { "characterName": "brief note" },
+  "keyDialogue": ["string"] | null
+}
+```
+
+## Token counting
+
+`src/tokens.ts` wraps `spindle.tokens.countText()` with a graceful fallback.
+
+### Fallback ratio: char/3 (not char/4)
+
+The original char/4 fallback undercounted by ~24% compared to Claude's actual BPE tokenizer on structured whiteboard content (markdown headers, proper nouns, formatting). Changed to char/3 which matches real counts more closely.
+
+### userId threading
+
+The interceptor's `countTokens` call now passes `lastKnownUserId` (captured from `GENERATION_ENDED` and `onFrontendMessage`) to avoid the operator-scoped extension rejection that triggers the fallback. The `get_whiteboard_tokens` frontend handler already had `userId` from `onFrontendMessage`.
+
+### Verified working
+
+Lumiverse's prompt breakdown confirms the real Claude tokenizer fires correctly: `Token count: 8913 tokens (tokenizer: Claude, approximate: false)`. Matches the Novelist Memory: Whiteboard line in the prompt breakdown UI.
+
+## Bug #25: Intern returns 0 results despite finding relevant messages
+
+**Symptom:** `recall_scene` (both tool and manual recall in drawer) returns 0 results even when the intern correctly identifies relevant archived messages. Logs show `selectedMessages=1` but `got 0 results`.
+
+**Root cause:** The intern selection LLM returns `messageId` as a required field in its JSON response, but models hallucinate UUIDs instead of copying the real `messageId` from the archive index. The code then calls `getArchivedMessagesByIds(chatId, messageIds)` with the hallucinated IDs → no matches → `messageMap.get(selection.messageId)` returns undefined → `if (!message) continue` skips all results.
+
+**Fix:** Resolve real `messageId` values from the archive index using `messageIndex` (which the model gets right — it's just a number). Build a lookup map `messageIndex → messageId` from the archive index, then use the model's `messageIndex` to find the real `messageId` for archive retrieval. Also added `messageByIndex` as a fallback lookup.
+
+## Bug #26: recall_scene tool fails with "userId is required for operator-scoped extensions"
+
+**Symptom:** When Lumia calls `recall_scene` during generation, the tool returns an error about userId being required. `recall_by_range` works fine because it doesn't need LLM calls.
+
+**Root cause:** Documented in `claude.md` under "Important: tool invocation has no userId" — `invokeExtensionTool` in Lumiverse's `worker-host.ts` strips `userId` from tool args for security. The tool handler receives only `(payload)`, no userId. `recall_scene` calls `queryIntern()` which calls `spindle.generate.quiet()` — and quiet() needs userId for operator-scoped extensions.
+
+**Fix:** Fall back to `lastKnownUserId` (captured from `GENERATION_ENDED` and `onFrontendMessage` event handlers) in the `recall_scene` tool handler. Same pattern used by all other operator-scoped API calls in the extension.
+
+```ts
+const results = await queryIntern(chatId, { query, maxResults }, userId ?? lastKnownUserId ?? undefined)
+```
+
+## Intern annotation rendering
+
+**Problem:** The intern annotation prompt says "Respond with ONLY the annotation text" but uses `jsonSchemaResponseFormat(internAnnotationSchema)` which forces structured JSON output. The raw JSON string (`{"annotation":"...","keyDetails":[...],"emotionalContext":"..."}`) was passed directly into `keyContent` and rendered as-is in both the drawer and tool responses.
+
+**Fix:** After receiving the annotation response, parse the JSON and extract readable text:
+- `annotation` field → main text
+- `keyDetails` array → joined with semicolons, prefixed "Key details: "
+- `emotionalContext` → prefixed "Emotional context: "
+- Falls back to raw text if JSON parsing fails
+
+Applied in `intern.ts` so both the drawer display and the `formatInternResults` tool response get clean text.
