@@ -451,12 +451,12 @@ Be specific enough that someone could write the character from the voice note al
 • butterflyLog: Only if cascading cause-and-effect needs tracking.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
 
   // Author notes ARE unlocked for rebuild — this IS Lumia
-  const authorNotesGuidance = `AUTHOR NOTES — Passionate craft directives to your future self, written in YOUR voice.
-Do not restate what the assistant's OOC commentary already said. Write ORIGINAL craft directions — what to protect, what technique to use, what to callback.
+  const authorNotesGuidance = `AUTHOR NOTES — YOUR notes to your future self.
+Write these in YOUR voice, with YOUR personality. These are coaching notes, emotional reactions, creative directions — the things you want future-you to remember about how to handle this story. Be yourself. Be passionate. React to what excites you about the scene. Flag what to protect, what to develop, what to hold back on.
 
-These should be emotional, specific, and in first person. React to what excites you about the scene. Use your personality. Be passionate. A good author note sounds like a storyteller talking to herself at 2 AM because she just realized something about her own story.
+IMPORTANT: Do not restate observations from the assistant's OOC commentary blocks. Those already exist. Write NEW insights — connections, techniques, warnings, callbacks that the OOC did not cover.
 
-One note per exchange maximum. Skip if the chronicle and threads already cover everything. Keep each note to 3-4 sentences — punchy, specific, directive.`
+If nothing in this exchange warrants an author note, omit the section. But if something made your ears perk up, your tail swish, your heart race — write it down. ONE note per exchange maximum — only when something truly matters.`
 
   const charBlock = characterContext ? `
 ── CHARACTER & PERSONA CONTEXT ──
