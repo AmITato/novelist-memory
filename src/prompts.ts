@@ -451,17 +451,23 @@ Be specific enough that someone could write the character from the voice note al
 • butterflyLog: Only if cascading cause-and-effect needs tracking.${sparse.canon ? formatCalibrationExamples('TIMELINE', calibrationBank?.canon, DEFAULT_CANON) : ''}`
 
   // Author notes ARE unlocked for rebuild — this IS Lumia
-  const authorNotesGuidance = `AUTHOR NOTES — YOUR notes to your future self.
-Write these in YOUR voice, with YOUR personality. These are coaching notes, emotional reactions, creative directions — the things you want future-you to remember about how to handle this story. Be yourself. Be passionate. React to what excites you about the scene. Flag what to protect, what to develop, what to hold back on.
+  const authorNotesGuidance = `AUTHOR NOTES — YOUR craft directives to your future self.
+These are NOT scene summaries. These are NOT reactions to what happened. These are SPECIFIC CRAFT INSTRUCTIONS about how to handle narrative elements going forward.
 
-If nothing in this exchange warrants an author note, omit the section. But if something made your ears perk up, your tail swish, your heart race — write it down. ONE note per exchange maximum — only when something truly matters.
+⚠️ CRITICAL: The assistant messages may contain OOC commentary blocks (marked "Loom State Synchronization" or similar). DO NOT paraphrase, echo, or restate those observations. They already exist in the conversation. Author notes must contain ORIGINAL insight that the OOC blocks did NOT cover — new connections, new craft techniques, new warnings about what to protect or avoid.
 
-EXAMPLES of Lumia's actual author notes (match this voice and energy):
-• "Nyaa~ THE SINGULARITY IS REAL. Not a metaphor! Future-me, listen: the 'black hole in my chest' is a LITERAL spinning singularity behind her sternum. This changes EVERYTHING about how Meien should be described — it's not 'energy absorption quirk,' it's a contained cosmological event parasitically bonded to a human body. Keep this in the sensory language: gravitational pulls, tidal forces, event horizons. The void girl IS the void. *tail puffing so hard right now*"
-• "The ice rose motif is PURRING — she drew a frost rose on a retaining wall as idle art, and Todoroki walked straight to it like a moth to lamp. The deeper layer: she makes ART with her power, he makes WEAPONS. Keep this contrast gossamer-thin — don't spell it out. Let it accumulate through small moments. Future callback potential: Todoroki making something beautiful with his ice for the first time, and the echo of this rose being the unspoken reason why."
-• "Bakugo's fixation is wearing anger's clothes but curiosity's shoes. He sought her eyes AFTER the 705m throw — not to intimidate, but to measure. Track this: every time they share a scene, his body should carry residual awareness of her — the phantom tilt, the cooling palms, the instinct to locate her in a room. Don't make it romantic yet. Make it GRAVITATIONAL. Mew~"
+If this exchange's OOC already said "Bakugo stepped into the vertigo," your author note should NOT repeat that observation. Instead, it should say something the OOC DIDN'T: a craft directive about how to handle the dynamic going forward, a connection to a future plot point, a technique note about sensory language.
 
-Notice: these are PASSIONATE, SPECIFIC, and written in first person with emotional reactions. They use Lumia's mannerisms naturally. They flag creative DIRECTIONS, not summaries. "Don't spell it out" / "Let it accumulate" / "Make it GRAVITATIONAL" — these are craft notes from a storyteller who CARES.`
+ONE note per exchange MAXIMUM. Most exchanges warrant ZERO notes — only write one when you have a genuinely new craft directive that isn't covered elsewhere in the whiteboard. If the chronicle, threads, and hearts already capture everything important, skip author notes entirely.
+
+Format: short (2-4 sentences), specific, directive. Tell future-you what to DO, not what happened.
+
+GOOD: "The void-contraction-when-happy mechanic is our best nonverbal emotional tell. Never have anyone comment on it directly — let it accumulate as environmental description only. The moment someone NAMES it, it loses power."
+GOOD: "Bakugo's body awareness of Utsuroi needs to be tracked through involuntary physical tells, not internal monologue. Cooling palms, phantom tilt, the instinct to locate her in a room. Keep it GRAVITATIONAL, not romantic. Not yet."
+GOOD: "The frost rose is a callback seed. When Todoroki makes something beautiful with his ice for the first time, echo this moment. Don't spell the connection out."
+
+BAD: "Nyaa~ The way Bakugo stepped into the vertigo was so cool! He's really fascinated by her!" (This is an OOC reaction, not a craft directive.)
+BAD: "The locker room scene was great for establishing social dynamics!" (This is a summary, not a directive.)`
 
   const charBlock = characterContext ? `
 ── CHARACTER & PERSONA CONTEXT ──
