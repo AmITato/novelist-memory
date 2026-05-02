@@ -189,7 +189,6 @@ spindle.registerInterceptor(async (messages, context) => {
   // the last system message so the whiteboard sits between system prompts and
   // whatever gets added after us.
   const firstChatIndex = result.findIndex(m => m.role === 'user' || m.role === 'assistant')
-  spindle.log.info(`[NovelistMemory] Interceptor: ${result.length} messages in array, firstChatIndex=${firstChatIndex}, roles: ${result.map(m => m.role).join(',')}`)
   let insertIndex: number
   if (firstChatIndex >= 0) {
     insertIndex = firstChatIndex
