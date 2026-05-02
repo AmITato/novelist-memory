@@ -525,9 +525,10 @@ const toolHandler = async (payload: ToolInvocationPayloadDTO, userId?: string): 
   }
 
   // Semantic search via the Intern (LLM-powered retrieval)
+  // Tool invocations strip userId (security) — fall back to lastKnownUserId
   const query = payload.args.query as string
   const maxResults = (payload.args.max_results as number) ?? 3
-  const results = await queryIntern(chatId, { query, maxResults }, userId)
+  const results = await queryIntern(chatId, { query, maxResults }, userId ?? lastKnownUserId ?? undefined)
   return formatInternResults(results)
 }
 ;(spindle.on as Function)('TOOL_INVOCATION', toolHandler)
