@@ -70,16 +70,26 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
     .sort((a, b) => a.priority - b.priority)
     .slice(0, maxResults)
 
-  spindle.log.info(`[NovelistMemory] Intern selected ${selected.length} messages after sort/slice (from ${selectionResult.selectedMessages.length} raw)`)
-  const messageIds = selected.map(s => s.messageId)
-  const fullMessages = await getArchivedMessagesByIds(chatId, messageIds)
+  // Resolve real messageIds from the archive index using messageIndex —
+  // the model often hallucinates UUIDs instead of copying from the index
+  const indexMap = new Map(archiveIndex.map(e => [e.messageIndex, e.messageId]))
+  const resolvedIds = selected
+    .map(s => indexMap.get(s.messageIndex))
+    .filter((id): id is string => !!id)
+
+  spindle.log.info(`[NovelistMemory] Intern selected ${selected.length} messages, resolved ${resolvedIds.length} real IDs`)
+  const fullMessages = await getArchivedMessagesByIds(chatId, resolvedIds)
   const messageMap = new Map(fullMessages.map(m => [m.messageId, m]))
+  // Also map by messageIndex for lookup
+  const messageByIndex = new Map(fullMessages.map(m => [m.messageIndex, m]))
 
   // Step 3: Annotate each retrieved scene
   const results: InternResult[] = []
 
   for (const selection of selected) {
-    const message = messageMap.get(selection.messageId)
+    // Look up by real messageId from index, fall back to messageIndex
+    const realId = indexMap.get(selection.messageIndex)
+    const message = (realId ? messageMap.get(realId) : undefined) ?? messageByIndex.get(selection.messageIndex)
     if (!message) continue
 
     let annotation: string
