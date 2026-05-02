@@ -95,7 +95,22 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
     if (delta.chronicle.update) {
       for (const partial of delta.chronicle.update) {
         const existing = updated.chronicle.find(c => c.id === partial.id)
-        if (existing) Object.assign(existing, partial)
+        if (existing) {
+          // Widen sourceMessageRange instead of replacing — if the existing entry
+          // covers [0,1] and the update says [2,3], the result should be [0,3].
+          if (partial.sourceMessageRange && existing.sourceMessageRange) {
+            const allIndices = [...existing.sourceMessageRange, ...partial.sourceMessageRange]
+            partial.sourceMessageRange = [Math.min(...allIndices), Math.max(...allIndices)]
+          }
+          // Append verbatimDialogue instead of replacing — updates should add new
+          // dialogue fragments, not overwrite the existing ones.
+          if (partial.verbatimDialogue && existing.verbatimDialogue) {
+            const existingSet = new Set(existing.verbatimDialogue)
+            const newDialogue = partial.verbatimDialogue.filter(d => !existingSet.has(d))
+            partial.verbatimDialogue = [...existing.verbatimDialogue, ...newDialogue]
+          }
+          Object.assign(existing, partial)
+        }
       }
     }
   }

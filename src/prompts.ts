@@ -181,27 +181,29 @@ export function buildUpdatePrompt(
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.${rangeReminder}
 Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-Lumia will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what the primary model scans to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange — this spans BOTH the user message (character actions) and the assistant message (world response).
 
-SCENE CONTINUITY — This is critical:
-Look at the EXISTING chronicle entries. If the latest entry covers the same scene (same location, same time block, same characters, no major beat change), UPDATE that entry instead of creating a new one. Use "chronicle.update" with the existing entry's ID to:
-• Expand the summary with new developments from this exchange
+SCENE CONTINUITY:
+If the latest existing chronicle entry covers the same scene AND nothing emotionally significant has changed, UPDATE it using "chronicle.update" with the existing ID:
+• Expand the summary with new developments
 • Add new dialogue fragments to verbatimDialogue
 • Update emotionalStates if they shifted
-• Widen sourceMessageRange to include the new message index
-Only create a NEW entry when: the location changes, significant time passes, a major emotional beat lands that deserves its own entry, or the scene's character composition shifts meaningfully.
+• CRITICAL: Set sourceMessageRange to span ALL messages covered — e.g. if the existing entry covers [0,1] and this exchange is [2,3], the update MUST set sourceMessageRange to [0,3]. Widen, never narrow.
 
-Entry cadence — NOT every message. Only when:
-• Location or time changes
-• A significant emotional beat lands — the kind that makes you hold your breath
+But MORE OFTEN, create a NEW entry. Err on the side of NEW entries, not updates. Create a new entry when ANY of these apply:
+• A major emotional beat lands (a hug, a goodbye, a confession, a confrontation)
 • A relationship dynamic shifts — even subtly, even silently
+• The scene moves to a different room or area (kitchen → genkan → balcony = new entries)
 • A hidden thread advances or a foreshadowing seed is planted
+• Important dialogue occurs that future retrieval would need to find
+• The exchange contains lore, tactical planning, or worldbuilding details
 
-Five messages of continuous conversation in one room = one Chronicle entry. One message crossing three locations = three entries.
+Only UPDATE (instead of creating new) when the exchange is truly just a continuation of the same beat with no new emotional weight — rare in fiction.
 
+DON'T: Merge an emotionally rich exchange into an existing entry just because the location hasn't changed. A breakfast conversation and a goodbye hug in the same apartment are SEPARATE beats.
 DON'T: Create entries that are just plot summaries without emotional texture. "They talked about school" is worthless. "She deflected questions about the Commission with aggressive breakfast-making, ears stiff" is gold.
 DON'T: Include meta-commentary like "This was an important scene." The content should make importance self-evident.
-DON'T: Create a new entry for every exchange. If the scene hasn't changed, UPDATE the existing one.
 DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures. These make callbacks feel embodied, not remembered.
-DO: Flag specific callback-worthy details explicitly in the summary. The tiny things — the way someone held a cup, where their eyes went, what they didn't say.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
+DO: Flag specific callback-worthy details explicitly in the summary. The tiny things — the way someone held a cup, where their eyes went, what they didn't say.
+DO: When in doubt, create a NEW entry. Missing content is worse than having one extra entry.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
   const threadsGuidance = `THREADS — Narrative arcs and plot threads. THIS IS THE MOST CRITICAL SECTION.
 Every thread MUST have trigger conditions and downstream consequences, or it's just a fact — facts belong in Chronicle or Hearts, not Threads.
@@ -392,18 +394,21 @@ export function buildRebuildPrompt(
   const chronicleGuidance = `CHRONICLE — Scene-level narrative beats. These are the story's heartbeat.${rangeReminder}
 Density: 3-6 sentences per entry. Capture what happened, who was there, the emotional register, and one specific sensory/environmental anchor that makes the scene *breathe* — the smell, the temperature, the sound that future-you will read and instantly be back in that room. Include verbatim dialogue fragments — the key lines that carry emotional weight, reveal character voice, or would matter for future callbacks. Err on the side of capturing MORE dialogue, not less; these fragments are what you scan to decide whether to pull the full scene via recall_by_range. ALWAYS include sourceMessageRange — this spans BOTH the user message (character actions) and the assistant message (world response).
 
-SCENE CONTINUITY: Look at existing chronicle entries. If the latest entry covers the same scene (same location, same time, same characters), UPDATE it instead of creating a new one — expand the summary, add dialogue, widen the sourceMessageRange. Only create a NEW entry when the scene actually changes.
+SCENE CONTINUITY:
+If the latest existing chronicle entry covers the same scene AND nothing emotionally significant has changed, UPDATE it using "chronicle.update" with the existing ID — expand the summary, add dialogue, and WIDEN sourceMessageRange to span all covered messages.
 
-Entry cadence — NOT every message. Only when:
-• Location or time changes
-• A significant emotional beat lands
+But MORE OFTEN, create a NEW entry. Err on the side of NEW entries. Create a new entry when ANY of these apply:
+• A major emotional beat lands (a hug, a goodbye, a confession, a confrontation)
 • A relationship dynamic shifts — even subtly
-• A hidden thread advances or a foreshadowing seed is planted
+• The scene moves to a different room or area
+• Important dialogue, lore, or tactical planning occurs
+• The exchange contains content that future retrieval would need to find independently
 
+DON'T: Merge an emotionally rich exchange into an existing entry just because the location hasn't changed.
 DON'T: Create entries that are just plot summaries without emotional texture.
-DON'T: Create a new entry for every exchange if the scene hasn't changed.
 DO: Preserve sensory anchors — ambient smells, lighting, temperature, textures.
-DO: Flag specific callback-worthy details explicitly in the summary.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
+DO: Flag specific callback-worthy details explicitly in the summary.
+DO: When in doubt, create a NEW entry. Missing content is worse than one extra entry.${sparse.chronicle ? formatCalibrationExamples('CHRONICLE', calibrationBank?.chronicle, DEFAULT_CHRONICLE) : ''}`
 
   const threadsGuidance = `THREADS — Narrative arcs and plot threads.
 Every thread MUST have trigger conditions and downstream consequences.
