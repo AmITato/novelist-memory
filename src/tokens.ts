@@ -29,13 +29,14 @@ export async function countTokens(text: string, userId?: string): Promise<TokenC
 
   try {
     const result = await spindle.tokens.countText(text, { userId, modelSource: 'main' })
+    spindle.log.info(`[NovelistMemory] Token count: ${result.total_tokens} tokens (tokenizer: ${result.tokenizer_name}, approximate: ${result.approximate})`)
     return {
       count: result.total_tokens,
       approximate: result.approximate,
       tokenizer: result.tokenizer_name,
     }
   } catch (err) {
-    spindle.log.warn(`[NovelistMemory] Token counting failed, using char/3 fallback: ${err}`)
+    spindle.log.warn(`[NovelistMemory] Token counting failed (userId: ${userId ?? 'none'}), using char/3 fallback: ${err}`)
     // char/3 is closer to reality for Claude's BPE tokenizer on English prose
     // with structured content (markdown, proper nouns, formatting). char/4 was
     // undercounting by ~24% on real whiteboard content.
