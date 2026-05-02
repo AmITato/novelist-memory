@@ -38,6 +38,7 @@ novelist-memory/
     updater.ts          # Post-generation pipeline — whiteboard updates, message archival
     tokens.ts           # Token counting wrapper — spindle.tokens.countText with char/4 fallback
     prompts.ts          # All LLM prompt templates (update, metadata extraction, intern)
+    schemas.ts          # JSON Schema definitions for strict structured output (WhiteboardDelta, intern, archive metadata)
   dist/
     backend.js          # Built backend bundle
     frontend.js         # Built frontend bundle
@@ -819,3 +820,193 @@ This handles both single deletes (rewind after 500ms) and batch deletes (wait fo
 1. Backfills `from`, `to`, and `status` with empty strings via `??=`
 2. Filters out hearts with empty `from` or `to` (invalid entries the model hallucinated)
 3. Uses optional chaining (`?.toLowerCase()`) on all dedup comparisons for both hearts and threads as defense-in-depth
+
+## Structured output migration: `json_object` → `json_schema`
+
+### The problem
+
+All `quiet()` calls used `response_format: { type: 'json_object' }` — the weak form of JSON mode that just says "please output JSON" without enforcing any schema. Models (especially DeepSeek V4 Flash at 13B active params) would:
+- Produce valid JSON that didn't match the WhiteboardDelta structure
+- Truncate mid-output and produce malformed JSON that `repairJson` couldn't fix
+- Wrap output in markdown code fences (` ```json `) even with JSON mode enabled
+- Fail on complex exchanges where the whiteboard state was large (exchange 6 of a rebuild would fail 4/4 retries)
+
+### The solution
+
+Created `src/schemas.ts` with four strict JSON Schema definitions:
+- `whiteboardDeltaSchema` — full WhiteboardDelta with all six sections (chronicle/threads/hearts/palette/canon/authorNotes)
+- `internSelectionSchema` — intern's scene selection response
+- `internAnnotationSchema` — intern's per-scene annotation response
+- `archiveMetadataSchema` — archive metadata extraction response
+- `jsonSchemaResponseFormat()` — helper that wraps any schema into the OpenAI-compatible `response_format` object
+
+All five `quiet()` calls (3 in `updater.ts`, 2 in `intern.ts`) now use `jsonSchemaResponseFormat(schema)` instead of `{ type: 'json_object' }`.
+
+### How it works
+
+The `response_format` sent to the provider now looks like:
+```json
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "whiteboard_delta",
+    "strict": true,
+    "schema": { ... }
+  }
+}
+```
+
+On providers that support constrained decoding (Gemini, OpenAI, Fireworks-hosted models), this compiles the schema into a grammar artifact that restricts valid tokens at each generation step. The model **literally cannot produce malformed JSON** — the tokenizer refuses to emit an invalid token. On providers that don't support it, it falls back to prompt-based JSON mode (same as before, no worse).
+
+### Schema design rules (OpenAI strict mode)
+
+- All object properties must be listed in `required`
+- `additionalProperties: false` on every object
+- Optional fields use `type: ['string', 'null']` instead of omitting from `required`
+- Root must be `{ type: 'object' }`
+- Top-level sections (chronicle, threads, etc.) are all `type: ['object', 'null']` — the model outputs `"canon": null` when it has nothing to say about canon
+
+### Verification path
+
+Lumiverse's `quiet()` → `worker-runtime.ts` → `worker-host.ts` → `generate.service.ts` → `openai-compatible.ts:buildBody()` passthrough loop. The `response_format` parameter is explicitly mentioned in the passthrough comment as an intended use case. No provider adapter blocks or transforms it. For Google's provider, Lumiverse maps `responseMimeType`/`responseSchema` separately in `google.ts`. OpenRouter translates `json_schema` format to Gemini's native format automatically.
+
+### Prompt sensitivity with constrained decoding
+
+**Critical learning:** When using constrained decoding models (Gemini Flash), the system prompt must be clean. Long passages with nested quotes, JSON-like fragments inside GOOD/BAD examples, and conflicting quote patterns inside a prompt that's supposed to produce JSON confuse the model's token probability space. The grammar constraint guarantees *structural* validity, but a polluted prompt makes the model fight the grammar and produce truncated output that triggers `max_tokens` cutoff → malformed JSON.
+
+Keep prompt examples short and prosaic. Avoid nested quotation marks inside system prompts destined for JSON-schema-constrained generation.
+
+## Sidecar model evaluation
+
+### The journey
+
+Tested multiple models as sidecar for the whiteboard rebuild (6 exchanges, MHA adaptation story):
+
+| Model | Speed | JSON Reliability | Prose Quality | Cost |
+|---|---|---|---|---|
+| **DeepSeek V4 Flash** | 11-15 t/s | ❌ Failed 4/4 on exchange 6 | Good when it worked | $0.14/$0.28 per M |
+| **Claude Haiku 4.5** | Fast | ❌ Malformed on second message | 4K tokens on exchange 1 (too verbose) | $0.80/$4.00 per M |
+| **Gemini 3 Flash Preview** | 94-143 t/s | ✅ Zero failures with json_schema | Good structural quality | ~$0.30/$2.50 per M |
+
+### Why DeepSeek V4 Flash failed
+
+- 284B total / **13B active** params (MoE). In non-think mode, this is Llama-13B cognitive capacity
+- BenchLM ranked it **#49 of 115** overall, **#23 of 23** on verified leaderboard (dead last)
+- All benchmark claims use Think Max mode; non-think mode (what `quiet()` uses) scores dramatically lower (LiveCodeBench: 55.2% non-think vs 91.6% Think Max)
+- Through OpenRouter: 11 t/s (vs 83.7 t/s on DeepSeek's direct API). OpenRouter routing adds massive overhead
+- JSON validity degrades as whiteboard grows — the model runs out of working memory to hold the schema while writing rich content
+
+### Why Gemini 3 Flash works
+
+- Native constrained decoding via `responseSchema` — grammar compilation, not prompt suggestion
+- 143 t/s through OpenRouter (12x faster than DeepSeek Flash)
+- Full 6-exchange rebuild in ~70 seconds vs DeepSeek's 26+ minutes with failures
+- Zero JSON retries with `json_schema` strict mode
+- Good structural quality for chronicle/threads/hearts/canon/butterfly log
+- Author notes lack Lumia's voice (no "Nyaa~", flat craft directives) — acceptable for sidecar, Lumia handles her own notes via `update_whiteboard` during live gen
+
+### Recommended sidecar configuration
+
+- **Model:** Gemini 3 Flash (or Gemini 2.5 Flash for lower cost)
+- **Temperature:** 0.6 for rebuild (richer entries), 0.3 for normal per-gen updates
+- **Connection:** OpenRouter with Gemini provider routing
+- **JSON mode:** `json_schema` strict (via `schemas.ts`)
+
+## Prompt changes (session log)
+
+### 1. sourceMessageRange reinforcement
+
+**Problem:** The `MESSAGE RANGE` note was injected once at the top of the prompt, 2000+ tokens before the model actually wrote chronicle entries. By the time it reached the JSON output, it had forgotten the specific numbers.
+
+**Fix (three-point reinforcement):**
+1. The original `rangeNote` stays after the exchange text
+2. New `rangeReminder` injected directly into the chronicle guidance header: `⚠️ THIS EXCHANGE = messages #N–#M. Every chronicle entry from this exchange MUST use sourceMessageRange: [N, M].`
+3. The JSON example in the output format section now shows the actual range values (`[8, 9]`) instead of generic `[startIndex, endIndex]`
+
+Applied to both `buildUpdatePrompt` and `buildRebuildPrompt`.
+
+### 2. Scene continuity rewrite — favor new entries over merges
+
+**Problem:** The old guidance said "same location + same characters → UPDATE existing entry." During rebuilds, this caused the model to merge emotionally distinct scenes (breakfast + hug + goodbye) into the wake-up scene entry, losing content. Messages #2-3 (containing the Erasure strategy discussion, the tamagoyaki rating, the soapy-hands hug, the genkan goodbye, and "I'll get it right tomorrow") were completely missing from the chronicle.
+
+**Fix:** Flipped the default. The guidance now says:
+- "Err on the side of NEW entries, not updates"
+- Explicit list of when to create new: major emotional beat, relationship shift, room/area change, important dialogue, lore/tactical content
+- "Only UPDATE when the exchange is truly just a continuation of the same beat with no new emotional weight — rare in fiction"
+- "DON'T merge an emotionally rich exchange into an existing entry just because the location hasn't changed"
+
+Result: Messages #2-3 now produce their own chronicle entry. The balcony leap also gets its own entry. 7-8 entries instead of 5-6.
+
+### 3. Thread guidance expansion
+
+**Problem:** The old guidance suppressed thread creation with "DON'T: Create a thread for every plot point. Threads need CONSEQUENCES that need tracking." Models interpreted this as "only create 2-3 obviously critical threads." A 12-message rebuild produced only 3 threads (should be 6-12).
+
+**Fix:**
+- Added target range: "A healthy story should have 6-12 active threads at any time. If you only have 2-3, you are being too conservative."
+- Added explicit list of threadable content types: secrets, tactical plans, relationship dynamics with trajectory, lore elements, recurring social frictions, foreshadowing seeds
+- Removed the suppressive "DON'T create a thread for every plot point" line
+- Replaced with positive guidance: "DO: Create threads for character dynamics that have narrative momentum"
+
+Result: 6 threads including the previously-missing Erasure Protocol, Thermal Resonance, and Silk Standard.
+
+### 4. Author notes anti-parroting + voice preservation
+
+**Problem:** Gemini Flash was reading Lumia's OOC commentary blocks ("Loom State Synchronization") in the assistant messages and parroting them back as author notes — same observations, slightly rephrased. Not adding value.
+
+**Attempted fixes and results:**
+1. **Verbose GOOD/BAD examples with nested quotes** — Broke JSON decoding entirely. Gemini couldn't parse the nested quote patterns inside a JSON-producing prompt. Malformed output on almost every exchange.
+2. **Stripped to bare minimum** ("Write craft directions, not summaries") — Produced dry consultant bullet points. "Maintain the contrast between X and Y." No personality, no passion.
+3. **Restored original guidance + one-line OOC boundary** (final) — Original `authorNotesGuidance` from before any changes, with one added line: "IMPORTANT: Do not restate observations from the assistant's OOC commentary blocks. Those already exist. Write NEW insights." This produces the best balance — some "I love" patterns remain but notes end with actual craft directions.
+
+**Lesson:** Don't put nested quoted examples inside system prompts destined for JSON-schema-constrained decoding. The examples that work for non-constrained models break constrained decoders. Keep guidance short and prosaic; let the personality injection (`lumiaPersonality` variable) handle voice.
+
+## applyDelta improvements
+
+### Chronicle update: range widening
+
+**Problem:** `Object.assign(existing, partial)` on chronicle updates **replaced** `sourceMessageRange` instead of widening it. If exchange 1 set `[0,1]` and exchange 2 updated with `[2,3]`, the range became `[2,3]` — losing the original span.
+
+**Fix:** Before `Object.assign`, the update path now computes the union of existing and incoming ranges: `[Math.min(all), Math.max(all)]`. So `[0,1]` + `[2,3]` = `[0,3]`.
+
+### Chronicle update: dialogue append
+
+**Problem:** Same `Object.assign` issue — `verbatimDialogue` on update would replace the existing array instead of appending. Breakfast dialogue would overwrite wake-up dialogue.
+
+**Fix:** Before `Object.assign`, the update path deduplicates and appends dialogue. Existing lines preserved, new lines added (checked by exact string match).
+
+## Bug #21: Malformed JSON on all sidecar models due to weak `json_object` mode
+
+**Symptom:** DeepSeek V4 Flash, Claude Haiku 4.5, and other models produce malformed JSON on complex exchanges. `repairJson` can fix some cases but not truncated output. Exchange 6 of a 6-exchange rebuild fails 4/4 retries.
+
+**Root cause:** `response_format: { type: 'json_object' }` is prompt-level only — it adds "output JSON" to the system prompt but doesn't constrain decoding. Complex schemas (WhiteboardDelta with nested chronicles/threads/hearts) exceed the model's ability to self-enforce structure at 3-4K output tokens.
+
+**Fix:** Migrated all 5 `quiet()` calls to `response_format: { type: 'json_schema', json_schema: { name: '...', strict: true, schema: {...} } }`. Created `src/schemas.ts` with full JSON Schema definitions for every response type. On providers with constrained decoding (Gemini, OpenAI), the model cannot produce invalid JSON.
+
+## Bug #22: Chronicle content loss during rebuild — scene continuity too aggressive
+
+**Symptom:** Messages #2-3 (breakfast, Erasure strategy, hug, goodbye, "I'll get it right tomorrow") completely missing from the rebuilt whiteboard. The chronicle jumps from `[0,1]` (wake-up) to `[4,5]` (walkway standoff).
+
+**Root cause:** The scene continuity guidance told the model "same location + same characters → UPDATE existing entry." The model saw "still the apartment, still Rumi + Utsuroi" and decided to update rather than create — but the update either didn't include new content or just touched threads/hearts. The emotionally richest content in the story (the breakfast conversation, the tactical briefing, the goodbye hug) was silently dropped.
+
+**Fix:** Rewrote scene continuity to favor new entries. "Err on the side of NEW entries, not updates." Listed emotional beats, dialogue, lore, and tactical content as mandatory new-entry triggers. "DON'T merge an emotionally rich exchange into an existing entry just because the location hasn't changed."
+
+Additionally fixed `applyDelta` to widen `sourceMessageRange` and append `verbatimDialogue` on chronicle updates instead of replacing, as defense-in-depth.
+
+## Bug #23: sourceMessageRange forgotten by model on later exchanges
+
+**Symptom:** Chronicle entries from exchange 6 had `sourceMessageRange: [9, 9]` instead of the correct `[10, 11]`. The model saw the range at the top of the prompt but forgot it by the time it reached the chronicle output.
+
+**Root cause:** The `MESSAGE RANGE` note was injected once, after the exchange text, before the section guidelines. By the time the model processed 2000+ tokens of guidance and reached the JSON output, the specific numbers had faded from working memory.
+
+**Fix:** Three-point reinforcement:
+1. Original `rangeNote` after exchange text (unchanged)
+2. New `rangeReminder` embedded directly in the chronicle guidance header
+3. JSON example in the output format section shows actual range values instead of `[startIndex, endIndex]`
+
+## Bug #24: Author notes guidance with nested quotes breaks JSON constrained decoding
+
+**Symptom:** After adding verbose GOOD/BAD author notes examples with nested quoted strings, Gemini 3 Flash produced malformed JSON on almost every exchange. The previous rebuild (with the old guidance) had zero failures.
+
+**Root cause:** Constrained decoding models (Gemini Flash) compile the schema into a grammar, but the prompt still controls what the model *wants* to generate. Long passages with nested quotes and JSON-like fragments inside the system prompt confused the model's sense of nesting depth, causing it to fight the grammar and produce truncated output that hit `max_tokens`.
+
+**Fix:** Removed all nested-quote examples. Restored the original guidance with one added line about not parroting OOC. Kept prompt examples short and prosaic. The personality injection from `lumiaPersonality` variable handles voice.
