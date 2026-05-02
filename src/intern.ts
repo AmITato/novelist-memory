@@ -116,7 +116,21 @@ export async function queryIntern(chatId: string, query: InternQuery, userId?: s
       if (internConnId) annotGenRequest.connection_id = internConnId
       if (userId) annotGenRequest.userId = userId
       const annotationResponse = await spindle.generate.quiet(annotGenRequest) as { content: string }
-      annotation = annotationResponse.content
+      // Parse the structured annotation — extract readable text from JSON
+      let rawAnnotation = annotationResponse.content.trim()
+      if (rawAnnotation.startsWith('```')) {
+        rawAnnotation = rawAnnotation.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+      }
+      try {
+        const parsed = JSON.parse(rawAnnotation) as { annotation?: string, keyDetails?: string[], emotionalContext?: string }
+        const parts: string[] = []
+        if (parsed.annotation) parts.push(parsed.annotation)
+        if (parsed.keyDetails?.length) parts.push('Key details: ' + parsed.keyDetails.join('; '))
+        if (parsed.emotionalContext) parts.push('Emotional context: ' + parsed.emotionalContext)
+        annotation = parts.join('\n')
+      } catch {
+        annotation = rawAnnotation
+      }
     } catch {
       annotation = selection.relevanceNote
     }
