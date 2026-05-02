@@ -151,7 +151,7 @@ spindle.registerInterceptor(async (messages, context) => {
   const serialized = serializeWhiteboard(whiteboard)
 
   // Token budget check — uses real tokenizer when available, falls back to char/4
-  const tokenResult = await countTokens(serialized)
+  const tokenResult = await countTokens(serialized, lastKnownUserId ?? (context as { userId?: string }).userId)
   if (tokenResult.count > config.whiteboardTokenBudget) {
     spindle.log.warn(`Whiteboard exceeds token budget (${tokenResult.count} > ${config.whiteboardTokenBudget}, tokenizer: ${tokenResult.tokenizer}). Consider compaction.`)
     // Still inject — but warn. Future: auto-compact.

@@ -35,9 +35,12 @@ export async function countTokens(text: string, userId?: string): Promise<TokenC
       tokenizer: result.tokenizer_name,
     }
   } catch (err) {
-    spindle.log.warn(`[NovelistMemory] Token counting failed, using char/4 fallback: ${err}`)
+    spindle.log.warn(`[NovelistMemory] Token counting failed, using char/3 fallback: ${err}`)
+    // char/3 is closer to reality for Claude's BPE tokenizer on English prose
+    // with structured content (markdown, proper nouns, formatting). char/4 was
+    // undercounting by ~24% on real whiteboard content.
     return {
-      count: Math.ceil(text.length / 4),
+      count: Math.ceil(text.length / 3),
       approximate: true,
       tokenizer: 'fallback',
     }
@@ -49,5 +52,5 @@ export async function countTokens(text: string, userId?: string): Promise<TokenC
  * (e.g., logging hot paths). Prefer `countTokens` everywhere else.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4)
+  return Math.ceil(text.length / 3)
 }
