@@ -180,20 +180,21 @@ spindle.registerInterceptor(async (messages, context) => {
     }
   }
 
+  // ── DIAGNOSTIC: Log message array state before injection ──
+  spindle.log.info(`[NovelistMemory][DIAG] Interceptor received ${result.length} messages after sliding window clip`)
+  for (let i = 0; i < result.length; i++) {
+    const m = result[i]
+    const preview = typeof m.content === 'string' ? m.content.slice(0, 80).replace(/\n/g, '\\n') : '[multipart]'
+    spindle.log.info(`[NovelistMemory][DIAG]   [${i}] role=${m.role} len=${typeof m.content === 'string' ? m.content.length : '?'} preview="${preview}"`)
+  }
+
   // Inject before the chat history — find the first user or assistant message
   // (which marks the start of the conversation) and place the whiteboard above it.
-  // This keeps the whiteboard as background context rather than a final directive,
-  // preserving the model's voice by letting chat history and CoT sit closer to generation.
-  //
-  // If no chat messages exist yet (interceptor ran before assembly), insert after
-  // the last system message so the whiteboard sits between system prompts and
-  // whatever gets added after us.
   const firstChatIndex = result.findIndex(m => m.role === 'user' || m.role === 'assistant')
   let insertIndex: number
   if (firstChatIndex >= 0) {
     insertIndex = firstChatIndex
   } else {
-    // Find the last system message and insert after it
     let lastSystemIdx = -1
     for (let i = result.length - 1; i >= 0; i--) {
       if (result[i].role === 'system') { lastSystemIdx = i; break }
@@ -201,12 +202,16 @@ spindle.registerInterceptor(async (messages, context) => {
     insertIndex = lastSystemIdx >= 0 ? lastSystemIdx + 1 : result.length
   }
 
+  spindle.log.info(`[NovelistMemory][DIAG] firstChatIndex=${firstChatIndex}, insertIndex=${insertIndex}, total=${result.length}`)
+
   const injectedMessage = {
     role: 'system' as const,
     content: serialized,
   }
 
   result.splice(insertIndex, 0, injectedMessage)
+
+  spindle.log.info(`[NovelistMemory][DIAG] After injection: whiteboard at index ${insertIndex} of ${result.length} total messages`)
 
   return {
     messages: result,
