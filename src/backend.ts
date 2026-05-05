@@ -180,27 +180,21 @@ spindle.registerInterceptor(async (messages, context) => {
     }
   }
 
-  // ── Inject whiteboard inside the leading system block ──────────────────
-  // Anthropic's provider only extracts system messages into the `system`
-  // parameter if they appear in the LEADING contiguous block of system
-  // messages. Once the first non-system message appears (user/assistant),
-  // all subsequent system messages are demoted to role: "user" and merged
-  // into the conversation — landing at the bottom of context and flattening
-  // the model's CoT voice.
+  // ── Inject whiteboard EARLY in the leading system block ─────────────────
+  // Two constraints:
+  // 1. Must be inside the leading contiguous system block (before any
+  //    non-system message) so Anthropic's provider extracts it into the
+  //    `system` API parameter instead of demoting it to a user message.
+  // 2. Must be EARLY in that block — not at the end. The last system
+  //    content block sits closest to the conversation and has the strongest
+  //    positional influence on the model's voice. When the whiteboard
+  //    (18K tokens of structured analytical content) is last, it overwrites
+  //    the CoT instructions' voice anchoring. When it's early (after the
+  //    main system prompt but before character cards, world info, CoT),
+  //    it reads as background reference material.
   //
-  // Fix: find the end of the leading system block and insert the whiteboard
-  // there. This keeps it inside the system parameter on Anthropic while
-  // placing it as close to chat history as possible (background reference,
-  // not final directive).
-  let leadingSystemEnd = 0
-  for (let i = 0; i < result.length; i++) {
-    if (result[i].role !== 'system') break
-    leadingSystemEnd = i + 1
-  }
-
-  // If there are no leading system messages (shouldn't happen, but safe),
-  // fall back to index 0.
-  const insertIndex = leadingSystemEnd > 0 ? leadingSystemEnd : 0
+  // Strategy: insert after the first system message (the main system prompt).
+  const insertIndex = result.length > 0 && result[0].role === 'system' ? 1 : 0
 
   const injectedMessage = {
     role: 'system' as const,
