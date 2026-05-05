@@ -180,29 +180,27 @@ spindle.registerInterceptor(async (messages, context) => {
     }
   }
 
-  // ── DIAGNOSTIC: Log message array state before injection ──
-  spindle.log.info(`[NovelistMemory][DIAG] Interceptor received ${result.length} messages after sliding window clip`)
+  // ── Inject whiteboard inside the leading system block ──────────────────
+  // Anthropic's provider only extracts system messages into the `system`
+  // parameter if they appear in the LEADING contiguous block of system
+  // messages. Once the first non-system message appears (user/assistant),
+  // all subsequent system messages are demoted to role: "user" and merged
+  // into the conversation — landing at the bottom of context and flattening
+  // the model's CoT voice.
+  //
+  // Fix: find the end of the leading system block and insert the whiteboard
+  // there. This keeps it inside the system parameter on Anthropic while
+  // placing it as close to chat history as possible (background reference,
+  // not final directive).
+  let leadingSystemEnd = 0
   for (let i = 0; i < result.length; i++) {
-    const m = result[i]
-    const preview = typeof m.content === 'string' ? m.content.slice(0, 80).replace(/\n/g, '\\n') : '[multipart]'
-    spindle.log.info(`[NovelistMemory][DIAG]   [${i}] role=${m.role} len=${typeof m.content === 'string' ? m.content.length : '?'} preview="${preview}"`)
+    if (result[i].role !== 'system') break
+    leadingSystemEnd = i + 1
   }
 
-  // Inject before the chat history — find the first user or assistant message
-  // (which marks the start of the conversation) and place the whiteboard above it.
-  const firstChatIndex = result.findIndex(m => m.role === 'user' || m.role === 'assistant')
-  let insertIndex: number
-  if (firstChatIndex >= 0) {
-    insertIndex = firstChatIndex
-  } else {
-    let lastSystemIdx = -1
-    for (let i = result.length - 1; i >= 0; i--) {
-      if (result[i].role === 'system') { lastSystemIdx = i; break }
-    }
-    insertIndex = lastSystemIdx >= 0 ? lastSystemIdx + 1 : result.length
-  }
-
-  spindle.log.info(`[NovelistMemory][DIAG] firstChatIndex=${firstChatIndex}, insertIndex=${insertIndex}, total=${result.length}`)
+  // If there are no leading system messages (shouldn't happen, but safe),
+  // fall back to index 0.
+  const insertIndex = leadingSystemEnd > 0 ? leadingSystemEnd : 0
 
   const injectedMessage = {
     role: 'system' as const,
@@ -210,8 +208,6 @@ spindle.registerInterceptor(async (messages, context) => {
   }
 
   result.splice(insertIndex, 0, injectedMessage)
-
-  spindle.log.info(`[NovelistMemory][DIAG] After injection: whiteboard at index ${insertIndex} of ${result.length} total messages`)
 
   return {
     messages: result,
