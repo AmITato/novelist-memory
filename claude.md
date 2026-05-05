@@ -530,11 +530,35 @@ The sidecar prompt explicitly says "DO NOT GENERATE" for Author Notes. The sidec
 
 ## Whiteboard injection placement
 
-The interceptor injects the whiteboard **before the first user/assistant message** (i.e., before chat history starts), not at the end of the message array. This is critical for voice preservation — when the whiteboard sat at the bottom of context (closest to generation), its structured analytical format flattened the primary model's CoT voice. Moving it above chat history makes it background reference material rather than a final directive, preserving the model's personality in its thinking phase.
+The interceptor injects the whiteboard at the **end of the leading contiguous system block** — i.e., the last system message before the first non-system message (user/assistant/block) appears. This is critical for two reasons:
+
+### 1. Anthropic provider system extraction (Bug #27)
+
+Anthropic's provider (`anthropic.ts:450-464`) only extracts system messages into the API's `system` parameter if they appear in the **leading contiguous block** of system messages. Once the first non-system message appears (`sawNonSystem = true`), ALL subsequent system messages are demoted to `role: "user"` and merged into the conversation array.
+
+The old logic inserted the whiteboard "before the first user/assistant message" — which was index 106 in a 118-message array. This seemed correct (before chat history), but the Anthropic provider saw it as a system message appearing AFTER non-system messages and demoted it to a user message, which then got merged into the conversation at the bottom of context — the worst possible position.
+
+### 2. Voice preservation
+
+When the whiteboard lands at the bottom of context (closest to generation), its structured analytical format (headers, bullets, labeled sections) has disproportionate attention weight and flattens the primary model's CoT voice. Inside the system parameter, it's background reference material.
+
+### Current layout
 
 ```
-System prompts → CoT instructions → [WHITEBOARD HERE] → Chat history → User nudge → Generation
+[Leading system block: system prompts, character cards, world info]
+[WHITEBOARD HERE — last system message before conversation starts]
+[Chat history: user/assistant pairs within sliding window]
+[CoT instructions, user nudge, etc.]
+[Generation]
 ```
+
+### Provider behavior with this placement
+
+| Provider | Whiteboard location | Effect |
+|---|---|---|
+| **Anthropic** | Inside `system` API parameter | Background reference, away from generation point |
+| **Google Gemini** | Inside `systemInstruction` field | Same — extracted from messages, background |
+| **OpenAI-compatible** | System message at end of leading block | In-array but early, before conversation |
 
 The interceptor runs at priority 30 (before most other interceptors).
 
