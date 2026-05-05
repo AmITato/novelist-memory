@@ -128,8 +128,14 @@ spindle.registerContextHandler(async (context) => {
 }, 50) // Run early so other extensions can see our data
 
 // ─── Interceptor (Post-Assembly) ─────────────────────────────────────────────
-// Injects the serialized Whiteboard as a system message into the final message
-// array, right after the main system prompt. This is what the model actually sees.
+// Sliding window only. Whiteboard injection is now handled by the
+// {{novelist_whiteboard}} macro — the user places it in their preset at
+// whatever position they want, giving them exact control over where the
+// whiteboard sits relative to CoT instructions, character cards, etc.
+//
+// The interceptor still clips chat history to the sliding window, since
+// that's a structural concern (the whiteboard *replaces* older messages)
+// that doesn't belong in a macro.
 
 spindle.registerInterceptor(async (messages, context) => {
   const config = await getConfig()
@@ -138,31 +144,8 @@ spindle.registerInterceptor(async (messages, context) => {
   const chatId = (context as { chatId?: string }).chatId
   if (!chatId) return messages
 
-  // Skip injection for impersonate unless the toggle is on
-  if (activeGenerationType === 'impersonate' && !config.injectOnImpersonate) return messages
-
-  const whiteboard = await getWhiteboard(chatId)
-  const isEmpty = whiteboard.chronicle.length === 0
-    && whiteboard.threads.length === 0
-    && whiteboard.hearts.length === 0
-
-  if (isEmpty) return messages
-
-  const serialized = serializeWhiteboard(whiteboard)
-
-  // Token budget check — uses real tokenizer when available, falls back to char/4
-  const tokenResult = await countTokens(serialized, lastKnownUserId ?? (context as { userId?: string }).userId)
-  if (tokenResult.count > config.whiteboardTokenBudget) {
-    spindle.log.warn(`Whiteboard exceeds token budget (${tokenResult.count} > ${config.whiteboardTokenBudget}, tokenizer: ${tokenResult.tokenizer}). Consider compaction.`)
-    // Still inject — but warn. Future: auto-compact.
-  }
-
   // ── Sliding window: clip chat history to the last N exchanges ──────────
-  // The whiteboard replaces older messages, so we only need the most recent
-  // exchanges in context. This mirrors Lumiverse's own message limit logic
-  // but is tied to the extension's slidingWindowSize config.
   const windowSize = config.slidingWindowSize * 2
-  // Separate system/injected messages from chat history (user + assistant)
   const chatIndices: number[] = []
   for (let i = 0; i < messages.length; i++) {
     if (messages[i].role === 'user' || messages[i].role === 'assistant') {
@@ -170,44 +153,16 @@ spindle.registerInterceptor(async (messages, context) => {
     }
   }
 
-  let result = [...messages]
-  if (chatIndices.length > windowSize) {
-    // Remove chat messages outside the sliding window (oldest first)
-    const indicesToRemove = chatIndices.slice(0, chatIndices.length - windowSize)
-    // Remove in reverse order so indices stay valid
-    for (let i = indicesToRemove.length - 1; i >= 0; i--) {
-      result.splice(indicesToRemove[i], 1)
-    }
+  if (chatIndices.length <= windowSize) return messages
+
+  const result = [...messages]
+  const indicesToRemove = chatIndices.slice(0, chatIndices.length - windowSize)
+  for (let i = indicesToRemove.length - 1; i >= 0; i--) {
+    result.splice(indicesToRemove[i], 1)
   }
 
-  // ── Inject whiteboard EARLY in the leading system block ─────────────────
-  // Two constraints:
-  // 1. Must be inside the leading contiguous system block (before any
-  //    non-system message) so Anthropic's provider extracts it into the
-  //    `system` API parameter instead of demoting it to a user message.
-  // 2. Must be EARLY in that block — not at the end. The last system
-  //    content block sits closest to the conversation and has the strongest
-  //    positional influence on the model's voice. When the whiteboard
-  //    (18K tokens of structured analytical content) is last, it overwrites
-  //    the CoT instructions' voice anchoring. When it's early (after the
-  //    main system prompt but before character cards, world info, CoT),
-  //    it reads as background reference material.
-  //
-  // Strategy: insert after the first system message (the main system prompt).
-  const insertIndex = result.length > 0 && result[0].role === 'system' ? 1 : 0
-
-  const injectedMessage = {
-    role: 'system' as const,
-    content: serialized,
-  }
-
-  result.splice(insertIndex, 0, injectedMessage)
-
-  return {
-    messages: result,
-    breakdown: [{ messageIndex: insertIndex, name: 'Novelist Memory: Whiteboard' }],
-  }
-}, 30) // Run before most other interceptors
+  return { messages: result }
+}, 30)
 
 // ─── Tool Registration (Intern) ─────────────────────────────────────────────
 // Register the recall_scene tool so the primary model can request archived scenes.
@@ -1181,7 +1136,15 @@ spindle.registerMacro({
 // Update macro values when whiteboard changes
 async function refreshMacros(chatId: string): Promise<void> {
   const wb = await getWhiteboard(chatId)
-  spindle.updateMacroValue('novelist_whiteboard', serializeWhiteboard(wb))
+  const serialized = serializeWhiteboard(wb)
+  spindle.updateMacroValue('novelist_whiteboard', serialized)
+
+  // Token budget check
+  const config = await getConfig()
+  const tokenResult = await countTokens(serialized, lastKnownUserId ?? undefined)
+  if (tokenResult.count > config.whiteboardTokenBudget) {
+    spindle.log.warn(`[NovelistMemory] Whiteboard exceeds token budget (${tokenResult.count} > ${config.whiteboardTokenBudget}, ${tokenResult.tokenizer}). Consider compaction.`)
+  }
 
   const chronicleText = wb.chronicle
     .map(c => `[${c.timestamp}, ${c.location}] ${c.summary}`)
