@@ -528,39 +528,37 @@ The primary model (Lumia) and the sidecar updater (Hermes) have different respon
 
 The sidecar prompt explicitly says "DO NOT GENERATE" for Author Notes. The sidecar is framed as "Lumia's memory keeper" — it writes with warmth and texture matching her sensibilities, not as a clinical analyst.
 
-## Whiteboard injection placement
+## Whiteboard injection — macro-based (current)
 
-The interceptor injects the whiteboard at the **end of the leading contiguous system block** — i.e., the last system message before the first non-system message (user/assistant/block) appears. This is critical for two reasons:
+The whiteboard is injected via the `{{novelist_whiteboard}}` macro. The user places this macro in their preset at whatever position they want — between character description and CoT instructions, at a specific depth, in a specific prompt block. This gives **exact positional control** from the preset editor.
 
-### 1. Anthropic provider system extraction (Bug #27)
+### Available macros
 
-Anthropic's provider (`anthropic.ts:450-464`) only extracts system messages into the API's `system` parameter if they appear in the **leading contiguous block** of system messages. Once the first non-system message appears (`sawNonSystem = true`), ALL subsequent system messages are demoted to `role: "user"` and merged into the conversation array.
+| Macro | Content |
+|---|---|
+| `{{novelist_whiteboard}}` | Full serialized whiteboard (all sections) |
+| `{{novelist_chronicle}}` | Just Chronicle entries (compact format) |
+| `{{novelist_threads}}` | Just Thread entries (compact format) |
 
-The old logic inserted the whiteboard "before the first user/assistant message" — which was index 106 in a 118-message array. This seemed correct (before chat history), but the Anthropic provider saw it as a system message appearing AFTER non-system messages and demoted it to a user message, which then got merged into the conversation at the bottom of context — the worst possible position.
+All three use the push model (`handler: ''` + `updateMacroValue`). Values are refreshed via `refreshMacros()` on every whiteboard change — event handlers, tool calls, snapshot restores, chat switches.
 
-### 2. Voice preservation
+### Why macros instead of the interceptor
 
-When the whiteboard lands at the bottom of context (closest to generation), its structured analytical format (headers, bullets, labeled sections) has disproportionate attention weight and flattens the primary model's CoT voice. Inside the system parameter, it's background reference material.
+The interceptor-based injection (Bug #27) fought two losing battles:
 
-### Current layout
+1. **Anthropic's provider** (`anthropic.ts:450-464`) only extracts system messages into the `system` API parameter if they appear in the leading contiguous block. System messages appearing after any non-system message get demoted to `role: "user"` and merged into the conversation at the bottom. The interceptor couldn't reliably control where the whiteboard landed relative to other providers' message transforms.
 
-```
-[Leading system block: system prompts, character cards, world info]
-[WHITEBOARD HERE — last system message before conversation starts]
-[Chat history: user/assistant pairs within sliding window]
-[CoT instructions, user nudge, etc.]
-[Generation]
-```
+2. **Positional influence on CoT voice.** Even inside the system parameter, the whiteboard's structured analytical format (18K+ tokens of headers, bullets, labeled sections) flattened the primary model's CoT voice when it sat closest to the conversation boundary. The fix required the whiteboard to sit EARLY in context, with character cards, CoT instructions, and voice-anchoring content between it and the conversation. The interceptor couldn't see or control the relative ordering of preset blocks.
 
-### Provider behavior with this placement
+The macro approach gives the preset author direct control. Put `{{novelist_whiteboard}}` in a system block at position 2 (after the main system prompt), and the character card, world info, and CoT instructions buffer it from the conversation.
 
-| Provider | Whiteboard location | Effect |
-|---|---|---|
-| **Anthropic** | Inside `system` API parameter | Background reference, away from generation point |
-| **Google Gemini** | Inside `systemInstruction` field | Same — extracted from messages, background |
-| **OpenAI-compatible** | System message at end of leading block | In-array but early, before conversation |
+### Interceptor (sliding window only)
 
-The interceptor runs at priority 30 (before most other interceptors).
+The interceptor still exists at priority 30 but only handles sliding window clipping — removing chat messages outside `slidingWindowSize * 2` from the message array. This is a structural concern (the whiteboard *replaces* older messages) that doesn't belong in a macro.
+
+### Token budget
+
+The `refreshMacros()` function checks the serialized whiteboard against `whiteboardTokenBudget` and logs a warning if exceeded. This fires on every whiteboard change, not just at generation time.
 
 ## Git workflow — CRITICAL
 
