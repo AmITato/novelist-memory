@@ -550,7 +550,23 @@ The interceptor-based injection (Bug #27) fought two losing battles:
 
 2. **Positional influence on CoT voice.** Even inside the system parameter, the whiteboard's structured analytical format (18K+ tokens of headers, bullets, labeled sections) flattened the primary model's CoT voice when it sat closest to the conversation boundary. The fix required the whiteboard to sit EARLY in context, with character cards, CoT instructions, and voice-anchoring content between it and the conversation. The interceptor couldn't see or control the relative ordering of preset blocks.
 
-The macro approach gives the preset author direct control. Put `{{novelist_whiteboard}}` in a system block at position 2 (after the main system prompt), and the character card, world info, and CoT instructions buffer it from the conversation.
+The macro approach gives the preset author direct control.
+
+### Critical: use USER role, not SYSTEM
+
+The `{{novelist_whiteboard}}` macro block **must be set to USER role** in the preset. Even with macro-based injection, SYSTEM role blocks get relocated by Anthropic's provider — any system block that isn't in the very first contiguous run of system messages gets demoted to `role: "user"` and merged into the last user turn at the bottom of context. This happened even when the dry run breakdown showed the whiteboard in the correct position — the provider silently moved it.
+
+Setting the block to USER role avoids the provider transform entirely. User messages stay exactly where the preset places them. The whiteboard reads as context ("here's what you know about the story") rather than a system directive, and it stays positioned before chat history with CoT instructions after it.
+
+**Recommended block order:**
+```
+[System blocks: character card, OOC, world info, etc.]
+[{{novelist_whiteboard}} — USER role, before chat history]
+[Chat History]
+[CoT Experimental — USER role, last before generation]
+```
+
+This keeps the CoT as the final voice anchor before generation, with the whiteboard safely buffered above chat history.
 
 ### Interceptor (sliding window only)
 
