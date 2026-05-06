@@ -198,13 +198,27 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
     if (delta.palette.sensorySignatures)
       Object.assign(updated.palette.sensorySignatures, delta.palette.sensorySignatures)
     if (delta.palette.fragileDetails) {
-      for (const detail of delta.palette.fragileDetails) {
+      const fd = delta.palette.fragileDetails
+      // Support two shapes: string[] (legacy append) or { add?, remove? } (structured)
+      const toAdd: string[] = Array.isArray(fd) ? fd : (fd.add ?? [])
+      const toRemove: number[] = Array.isArray(fd) ? [] : (fd.remove ?? [])
+
+      // Remove by index first (descending to keep indices stable)
+      if (toRemove.length > 0) {
+        const sorted = [...toRemove].sort((a, b) => b - a)
+        for (const idx of sorted) {
+          if (idx >= 0 && idx < updated.palette.fragileDetails.length) {
+            updated.palette.fragileDetails.splice(idx, 1)
+          }
+        }
+      }
+
+      // Then add with dedup
+      for (const detail of toAdd) {
         const normalized = detail.toLowerCase().trim()
         const isDuplicate = updated.palette.fragileDetails.some(existing => {
           const existingNorm = existing.toLowerCase().trim()
-          // Exact match
           if (existingNorm === normalized) return true
-          // Substring containment — if one fully contains the other, it's a dup
           if (existingNorm.includes(normalized) || normalized.includes(existingNorm)) return true
           return false
         })

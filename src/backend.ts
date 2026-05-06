@@ -60,7 +60,15 @@ function summarizeDelta(delta: WhiteboardDelta): string {
     const sub: string[] = []
     if (delta.palette.voiceNotes && Object.keys(delta.palette.voiceNotes).length) sub.push('voice')
     if (delta.palette.sensorySignatures && Object.keys(delta.palette.sensorySignatures).length) sub.push('sensory')
-    if (delta.palette.fragileDetails?.length) sub.push(`${delta.palette.fragileDetails.length} fragile`)
+    if (delta.palette.fragileDetails) {
+      const fd = delta.palette.fragileDetails
+      if (Array.isArray(fd)) {
+        if (fd.length) sub.push(`+${fd.length} fragile`)
+      } else {
+        if (fd.add?.length) sub.push(`+${fd.add.length} fragile`)
+        if (fd.remove?.length) sub.push(`-${fd.remove.length} fragile`)
+      }
+    }
     if (delta.palette.formattingAssignments && Object.keys(delta.palette.formattingAssignments).length) sub.push('formatting')
     parts.push(`palette (${sub.join(', ') || 'merge'})`)
   }
@@ -325,7 +333,14 @@ spindle.registerTool({
           formattingAssignments: { type: 'object', additionalProperties: { type: 'string' } },
           voiceNotes: { type: 'object', additionalProperties: { type: 'string' } },
           sensorySignatures: { type: 'object', additionalProperties: { type: 'string' } },
-          fragileDetails: { type: 'array', items: { type: 'string' }, description: 'New fragile details to append.' },
+          fragileDetails: {
+            type: 'object',
+            description: 'Add or remove fragile details. Use remove (by 0-based index) to prune stale/duplicate entries, then add compressed replacements.',
+            properties: {
+              add: { type: 'array', items: { type: 'string' }, description: 'New fragile details to append.' },
+              remove: { type: 'array', items: { type: 'number' }, description: 'Indices of stale fragile details to remove (0-based).' },
+            },
+          },
         },
       },
       canon: {

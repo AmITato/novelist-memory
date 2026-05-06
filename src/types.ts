@@ -159,9 +159,20 @@ export interface WhiteboardDelta {
   chronicle?: { add?: ChronicleEntry[], update?: Partial<ChronicleEntry>[] }
   threads?: { add?: ThreadEntry[], update?: Partial<ThreadEntry>[] }
   hearts?: { add?: HeartEntry[], update?: Partial<HeartEntry>[] }
-  palette?: Partial<PaletteSection>
+  palette?: PaletteDelta
   canon?: Partial<CanonSection>
   authorNotes?: { add?: string[], remove?: number[] }
+}
+
+/** Palette delta supports two shapes for fragileDetails:
+ *  - string[] (legacy, append-only — used by sidecar)
+ *  - { add?: string[], remove?: number[] } (structured — used by update_whiteboard tool)
+ */
+export interface PaletteDelta {
+  formattingAssignments?: Record<string, string>
+  voiceNotes?: Record<string, string>
+  sensorySignatures?: Record<string, string>
+  fragileDetails?: string[] | { add?: string[], remove?: number[] }
 }
 
 // ─── History Types ──────────────────────────────────────────────────────────
