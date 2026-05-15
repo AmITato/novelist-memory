@@ -340,65 +340,25 @@ export function serializeWhiteboard(wb: Whiteboard): string {
 
   sections.push('=== NOVELIST MEMORY: WHITEBOARD ===\n')
 
-  // Chronicle
+  // Chronicle — raw JSON so the model can see entry IDs for update operations
   if (wb.chronicle.length > 0) {
     sections.push('── CHRONICLE ──')
-    for (const entry of wb.chronicle) {
-      const chars = entry.charactersPresent.length > 0 ? ` | Characters: ${entry.charactersPresent.join(', ')}` : ''
-      const msgs = entry.sourceMessageRange ? ` | Messages: #${entry.sourceMessageRange[0]}–#${entry.sourceMessageRange[1]}` : ''
-      sections.push(`[${entry.timestamp}, ${entry.location}]${chars}${msgs}`)
-      sections.push(entry.summary)
-      if (entry.emotionalStates && Object.keys(entry.emotionalStates).length > 0) {
-        const emotions = Object.entries(entry.emotionalStates).map(([k, v]) => `${k}: ${v}`).join('; ')
-        sections.push(`Emotional states: ${emotions}`)
-      }
-      if (entry.sensoryContext) sections.push(`Atmosphere: ${entry.sensoryContext}`)
-      if (entry.verbatimDialogue && entry.verbatimDialogue.length > 0) {
-        sections.push(`Key dialogue: ${entry.verbatimDialogue.join(' | ')}`)
-      }
-      sections.push('')
-    }
+    sections.push(JSON.stringify(wb.chronicle, null, 2))
+    sections.push('')
   }
 
-  // Threads
+  // Threads — raw JSON so the model can see thread IDs for update operations
   if (wb.threads.length > 0) {
     sections.push('── THREADS ──')
-    for (const thread of wb.threads) {
-      sections.push(`${thread.name} — STATUS: ${thread.status}`)
-      sections.push(`Last touched: ${thread.lastTouched}`)
-      sections.push(`What: ${thread.summary}`)
-      const deps = Array.isArray(thread.dependencies) ? thread.dependencies : thread.dependencies ? [thread.dependencies] : []
-      if (deps.length > 0)
-        sections.push(`Dependencies: ${deps.join('; ')}`)
-      const triggers = Array.isArray(thread.triggerConditions) ? thread.triggerConditions : thread.triggerConditions ? [thread.triggerConditions] : []
-      if (triggers.length > 0)
-        sections.push(`Triggers: ${triggers.join('; ')}`)
-      const downstream = Array.isArray(thread.downstreamConsequences) ? thread.downstreamConsequences : thread.downstreamConsequences ? [thread.downstreamConsequences] : []
-      if (downstream.length > 0)
-        sections.push(`Downstream: ${downstream.join('; ')}`)
-      sections.push('')
-    }
+    sections.push(JSON.stringify(wb.threads, null, 2))
+    sections.push('')
   }
 
-  // Hearts
+  // Hearts — raw JSON so the model can see heart IDs for update operations
   if (wb.hearts.length > 0) {
     sections.push('── HEARTS ──')
-    for (const heart of wb.hearts) {
-      sections.push(`${heart.from} → ${heart.to}:`)
-      sections.push(`  Status: ${heart.status}`)
-      const keyKnowledge = Array.isArray(heart.keyKnowledge) ? heart.keyKnowledge : heart.keyKnowledge ? [heart.keyKnowledge] : []
-      if (keyKnowledge.length > 0)
-        sections.push(`  Key knowledge: ${keyKnowledge.join('; ')}`)
-      if (heart.processing) sections.push(`  Processing: ${heart.processing}`)
-      const sensoryMemories = Array.isArray(heart.sensoryMemories) ? heart.sensoryMemories : heart.sensoryMemories ? [heart.sensoryMemories] : []
-      if (sensoryMemories.length > 0)
-        sections.push(`  Sensory memories: ${sensoryMemories.join('; ')}`)
-      const unresolved = Array.isArray(heart.unresolved) ? heart.unresolved : heart.unresolved ? [heart.unresolved] : []
-      if (unresolved.length > 0)
-        sections.push(`  Unresolved: ${unresolved.join('; ')}`)
-      if (heart.nextBeat) sections.push(`  Next beat: ${heart.nextBeat}`)
-      sections.push('')
-    }
+    sections.push(JSON.stringify(wb.hearts, null, 2))
+    sections.push('')
   }
 
   // Palette
