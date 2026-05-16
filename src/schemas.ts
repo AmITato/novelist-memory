@@ -23,7 +23,7 @@ export const whiteboardDeltaSchema = {
       chronicle: {
         type: ['object', 'null'] as const,
         additionalProperties: false,
-        required: ['add', 'update'],
+        required: ['add', 'update', 'remove'],
         properties: {
           add: {
             type: ['array', 'null'] as const,
@@ -75,12 +75,16 @@ export const whiteboardDeltaSchema = {
               },
             },
           },
+          remove: {
+            type: ['array', 'null'] as const,
+            items: { type: 'string' as const },
+          },
         },
       },
       threads: {
         type: ['object', 'null'] as const,
         additionalProperties: false,
-        required: ['add', 'update'],
+        required: ['add', 'update', 'remove'],
         properties: {
           add: {
             type: ['array', 'null'] as const,
@@ -118,12 +122,16 @@ export const whiteboardDeltaSchema = {
               },
             },
           },
+          remove: {
+            type: ['array', 'null'] as const,
+            items: { type: 'string' as const },
+          },
         },
       },
       hearts: {
         type: ['object', 'null'] as const,
         additionalProperties: false,
-        required: ['add', 'update'],
+        required: ['add', 'update', 'remove'],
         properties: {
           add: {
             type: ['array', 'null'] as const,
@@ -162,6 +170,10 @@ export const whiteboardDeltaSchema = {
                 nextBeat: { type: 'string' as const },
               },
             },
+          },
+          remove: {
+            type: ['array', 'null'] as const,
+            items: { type: 'string' as const },
           },
         },
       },

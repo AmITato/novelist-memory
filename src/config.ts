@@ -6,6 +6,7 @@ const CONFIG_FILE = 'config.json'
 
 const DEFAULT_CONFIG: NovelistConfig = {
   enabled: true,
+  updaterEnabled: true,
   slidingWindowSize: 6,
   autoCommitUpdates: true,
   updateReviewWindowMs: 30000,

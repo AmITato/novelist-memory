@@ -43,6 +43,7 @@ function summarizeDelta(delta: WhiteboardDelta): string {
   const parts: string[] = []
   if (delta.chronicle?.add?.length) parts.push(`+${delta.chronicle.add.length} chronicle`)
   if (delta.chronicle?.update?.length) parts.push(`~${delta.chronicle.update.length} chronicle`)
+  if (delta.chronicle?.remove?.length) parts.push(`-${delta.chronicle.remove.length} chronicle`)
   if (delta.threads?.add?.length) {
     const names = delta.threads.add.map(t => t.name).filter(Boolean)
     parts.push(`+${delta.threads.add.length} thread${names.length ? ` (${names.join(', ')})` : ''}`)
@@ -51,11 +52,13 @@ function summarizeDelta(delta: WhiteboardDelta): string {
     const statuses = delta.threads.update.filter(t => t.status).map(t => `${t.id}→${t.status}`)
     parts.push(`~${delta.threads.update.length} thread${statuses.length ? ` [${statuses.join(', ')}]` : ''}`)
   }
+  if (delta.threads?.remove?.length) parts.push(`-${delta.threads.remove.length} thread`)
   if (delta.hearts?.add?.length) {
     const pairs = delta.hearts.add.map(h => `${h.from}→${h.to}`)
     parts.push(`+${delta.hearts.add.length} heart (${pairs.join(', ')})`)
   }
   if (delta.hearts?.update?.length) parts.push(`~${delta.hearts.update.length} heart`)
+  if (delta.hearts?.remove?.length) parts.push(`-${delta.hearts.remove.length} heart`)
   if (delta.palette) {
     const sub: string[] = []
     if (delta.palette.voiceNotes && Object.keys(delta.palette.voiceNotes).length) sub.push('voice')
@@ -237,13 +240,13 @@ spindle.registerTool({
 spindle.registerTool({
   name: 'update_whiteboard',
   display_name: 'Update Whiteboard',
-  description: 'Directly edit the narrative whiteboard. Use this when you notice something important has changed mid-scene — a relationship shift, a thread resolving, a new plot seed, a continuity detail worth tracking — and you want to record it NOW rather than waiting for the post-generation updater. Pass a delta object with only the sections you want to change. Sections: chronicle (scene beats), threads (narrative arcs), hearts (relationships), palette (voice/style), canon (timeline/canon tracking), authorNotes (self-coaching). For chronicle/threads/hearts, use "add" for new entries (with id prefixes chr_, thr_, hrt_) and "update" for modifying existing entries by id.',
+  description: 'Directly edit the narrative whiteboard. Use this when you notice something important has changed mid-scene — a relationship shift, a thread resolving, a new plot seed, a continuity detail worth tracking — and you want to record it NOW rather than waiting for the post-generation updater. Pass a delta object with only the sections you want to change. Sections: chronicle (scene beats), threads (narrative arcs), hearts (relationships), palette (voice/style), canon (timeline/canon tracking), authorNotes (self-coaching). For chronicle/threads/hearts, use "add" for new entries (with id prefixes chr_, thr_, hrt_), "update" for modifying existing entries by id, and "remove" for deleting stale entries by id or name. Threads can be removed by id or name. Hearts can be removed by id or "From->To" pair.',
   parameters: {
     type: 'object',
     properties: {
       chronicle: {
         type: 'object',
-        description: 'Add or update Chronicle entries (scene-level narrative beats).',
+        description: 'Add, update, or remove Chronicle entries (scene-level narrative beats).',
         properties: {
           add: {
             type: 'array',
@@ -269,11 +272,16 @@ spindle.registerTool({
             description: 'Partial updates to existing chronicle entries (matched by id).',
             items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
           },
+          remove: {
+            type: 'array',
+            description: 'IDs of chronicle entries to delete. You can see these in the Chronicle JSON (e.g. "chr_rooftop_kiss").',
+            items: { type: 'string' },
+          },
         },
       },
       threads: {
         type: 'object',
-        description: 'Add or update Thread entries (narrative arcs/plot threads).',
+        description: 'Add, update, or remove Thread entries (narrative arcs/plot threads).',
         properties: {
           add: {
             type: 'array',
@@ -296,11 +304,16 @@ spindle.registerTool({
             type: 'array',
             items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
           },
+          remove: {
+            type: 'array',
+            description: 'IDs or names of threads to delete (case-insensitive match).',
+            items: { type: 'string' },
+          },
         },
       },
       hearts: {
         type: 'object',
-        description: 'Add or update Heart entries (relationship dynamics).',
+        description: 'Add, update, or remove Heart entries (relationship dynamics).',
         properties: {
           add: {
             type: 'array',
@@ -323,6 +336,11 @@ spindle.registerTool({
           update: {
             type: 'array',
             items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+          },
+          remove: {
+            type: 'array',
+            description: 'IDs or "From->To" pairs of hearts to delete (case-insensitive). Example: "hrt_rumi_utsuroi" or "Rumi->Utsuroi".',
+            items: { type: 'string' },
           },
         },
       },
@@ -622,9 +640,9 @@ async function applyRewind(chatId: string, state: Whiteboard, reason: string): P
 
   spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
 
-  // Updater pipeline (quiet gen + archival) only runs when enabled
+  // Updater pipeline (quiet gen + archival) only runs when enabled AND updaterEnabled
   const config = await getConfig()
-  if (config.enabled) {
+  if (config.enabled && config.updaterEnabled) {
     try {
       await processGenerationEnd(chatId, p.messageId, userId)
     } catch (err) {

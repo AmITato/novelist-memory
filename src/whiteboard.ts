@@ -113,6 +113,16 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
         }
       }
     }
+    if (delta.chronicle.remove) {
+      for (const target of delta.chronicle.remove) {
+        const normalized = target.toLowerCase().trim()
+        const idx = updated.chronicle.findIndex(c =>
+          c.id.toLowerCase().trim() === normalized
+          || c.summary.toLowerCase().trim().includes(normalized)
+        )
+        if (idx >= 0) updated.chronicle.splice(idx, 1)
+      }
+    }
   }
 
   if (delta.threads) {
@@ -145,6 +155,16 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
       for (const partial of delta.threads.update) {
         const existing = updated.threads.find(t => t.id === partial.id)
         if (existing) Object.assign(existing, partial)
+      }
+    }
+    if (delta.threads.remove) {
+      for (const target of delta.threads.remove) {
+        const normalized = target.toLowerCase().trim()
+        const idx = updated.threads.findIndex(t =>
+          t.id.toLowerCase().trim() === normalized
+          || t.name.toLowerCase().trim() === normalized
+        )
+        if (idx >= 0) updated.threads.splice(idx, 1)
       }
     }
   }
@@ -186,6 +206,23 @@ export function applyDelta(whiteboard: Whiteboard, delta: WhiteboardDelta): Whit
       for (const partial of delta.hearts.update) {
         const existing = updated.hearts.find(h => h.id === partial.id)
         if (existing) Object.assign(existing, partial)
+      }
+    }
+    if (delta.hearts.remove) {
+      for (const target of delta.hearts.remove) {
+        const normalized = target.toLowerCase().trim()
+        // Match by ID, or by "from->to" / "from→to" pair notation
+        const pairMatch = normalized.match(/^(.+?)(?:->|→)(.+)$/)
+        const idx = updated.hearts.findIndex(h => {
+          if (h.id.toLowerCase().trim() === normalized) return true
+          if (pairMatch) {
+            const [, from, to] = pairMatch
+            return h.from.toLowerCase().trim() === from.trim()
+              && h.to.toLowerCase().trim() === to.trim()
+          }
+          return false
+        })
+        if (idx >= 0) updated.hearts.splice(idx, 1)
       }
     }
   }

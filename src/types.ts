@@ -112,6 +112,7 @@ export interface InternResult {
 
 export interface NovelistConfig {
   enabled: boolean
+  updaterEnabled: boolean
   slidingWindowSize: number
   autoCommitUpdates: boolean
   updateReviewWindowMs: number
@@ -156,9 +157,9 @@ export interface PendingUpdate {
 }
 
 export interface WhiteboardDelta {
-  chronicle?: { add?: ChronicleEntry[], update?: Partial<ChronicleEntry>[] }
-  threads?: { add?: ThreadEntry[], update?: Partial<ThreadEntry>[] }
-  hearts?: { add?: HeartEntry[], update?: Partial<HeartEntry>[] }
+  chronicle?: { add?: ChronicleEntry[], update?: Partial<ChronicleEntry>[], remove?: string[] }
+  threads?: { add?: ThreadEntry[], update?: Partial<ThreadEntry>[], remove?: string[] }
+  hearts?: { add?: HeartEntry[], update?: Partial<HeartEntry>[], remove?: string[] }
   palette?: PaletteDelta
   canon?: Partial<CanonSection>
   authorNotes?: { add?: string[], remove?: number[] }
