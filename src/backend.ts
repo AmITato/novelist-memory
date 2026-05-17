@@ -640,9 +640,11 @@ async function applyRewind(chatId: string, state: Whiteboard, reason: string): P
 
   spindle.log.info(`[NovelistMemory] GENERATION_ENDED fired — chat: ${chatId}, userId: ${userId ?? 'none'}`)
 
-  // Updater pipeline (quiet gen + archival) only runs when enabled AND updaterEnabled
+  // Updater pipeline (archival + optional sidecar) runs when enabled.
+  // The updaterEnabled toggle is checked inside processGenerationEnd to
+  // gate only the sidecar LLM updater — archival always runs.
   const config = await getConfig()
-  if (config.enabled && config.updaterEnabled) {
+  if (config.enabled) {
     try {
       await processGenerationEnd(chatId, p.messageId, userId)
     } catch (err) {

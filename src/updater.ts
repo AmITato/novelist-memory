@@ -100,19 +100,23 @@ export async function processGenerationEnd(
   try {
     spindle.log.info(`[NovelistMemory] Processing generation end for chat ${chatId}, message ${messageId ?? 'unknown'}`)
 
-    // Run whiteboard update and archival check concurrently
-    await Promise.all([
-      updateWhiteboard(chatId, messageId, userId),
-      checkAndArchiveMessages(chatId, userId),
-    ])
+    // Archival always runs (powers recall_scene + recall_by_range).
+    // Whiteboard update (sidecar LLM) only runs when updaterEnabled is true.
+    const tasks: Promise<void>[] = [checkAndArchiveMessages(chatId, userId)]
+    if (config.updaterEnabled) {
+      tasks.push(updateWhiteboard(chatId, messageId, userId))
+    }
+    await Promise.all(tasks)
 
     // Auto-commit any pending updates whose review window has elapsed
     await autoCommitDueUpdates(chatId)
 
     // Fire-and-forget compaction check — don't block generation
-    compactChronicle(chatId, userId).catch(err =>
-      spindle.log.error(`[NovelistMemory] Compaction error: ${err}`)
-    )
+    if (config.updaterEnabled) {
+      compactChronicle(chatId, userId).catch(err =>
+        spindle.log.error(`[NovelistMemory] Compaction error: ${err}`)
+      )
+    }
   } catch (err) {
     spindle.log.error(`[NovelistMemory] Post-generation processing failed: ${err}`)
   }
