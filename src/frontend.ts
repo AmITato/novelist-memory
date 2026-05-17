@@ -891,6 +891,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
     const cfg = currentConfig as {
       enabled: boolean
+      updaterEnabled: boolean
       slidingWindowSize: number
       autoCommitUpdates: boolean
       useSidecar: boolean
@@ -902,6 +903,7 @@ export function setup(ctx: SpindleFrontendContext) {
       auditIntervalMessages: number
       updaterTemperature?: number
       injectOnImpersonate?: boolean
+      includeCharacterContext?: boolean
     }
 
     const container = document.createElement('div')
@@ -935,6 +937,14 @@ export function setup(ctx: SpindleFrontendContext) {
       'Master toggle for Novelist Memory',
       cfg.enabled,
       (val) => saveField('enabled', val)
+    ))
+
+    // Updater enabled toggle
+    generalSection.appendChild(makeToggleField(
+      'Sidecar Updater',
+      'Run the background sidecar updater after each generation. Disable to let Lumia manage the whiteboard entirely via update_whiteboard tool calls.',
+      cfg.updaterEnabled ?? true,
+      (val) => saveField('updaterEnabled', val)
     ))
 
     // Auto-commit toggle
